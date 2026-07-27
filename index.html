@@ -12,6 +12,14 @@
   <meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☎️</text></svg>" />
   <link rel="stylesheet" href="css/style.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./vendor/three/three.module.js",
+      "three/addons/": "./vendor/three/addons/"
+    }
+  }
+  </script>
   <script>
     // Set the theme before first paint so there is no flash.
     (function () {
@@ -33,6 +41,7 @@
       <a href="#lineage">Lineage</a>
       <a href="#trunks">Survivors</a>
       <a href="#ledger">Every deal</a>
+      <button class="nav-story" id="nav-story" type="button" hidden>Story mode</button>
     </nav>
     <button class="theme-toggle" type="button" aria-label="Switch between light and dark theme">
       <span class="theme-toggle-icon" aria-hidden="true"></span>
@@ -49,6 +58,15 @@
         This page tracks 66 companies and shows, for each one, exactly which company it ended up inside.
       </p>
       <ul class="stats" id="stats"></ul>
+
+      <div class="hero-actions">
+        <button class="btn btn--primary" id="launch-story" type="button" hidden>
+          <span class="btn-glyph" aria-hidden="true">▶</span>
+          Fly through the story
+          <span class="btn-sub">Eight chapters, in 3D</span>
+        </button>
+        <a class="btn" href="#lineage">Go straight to the chart</a>
+      </div>
     </section>
 
     <section id="curve" class="section">
@@ -184,6 +202,44 @@
   </main>
 
   <div class="tip" id="tip" role="status" aria-live="polite" hidden></div>
+
+  <!-- Story mode: the same lineage, flown through. Built only when opened. -->
+  <div class="story" id="story" hidden>
+    <div class="story-stage" id="story-stage"></div>
+    <div class="story-labels" id="story-labels"></div>
+
+    <header class="story-top">
+      <span class="story-mark">The Consolidation</span>
+      <span class="story-clock" id="story-clock">1983</span>
+      <span class="story-spacer"></span>
+      <button class="story-btn" id="story-reset" type="button">Recentre</button>
+      <button class="story-btn story-btn--close" id="story-close" type="button">Close <kbd>Esc</kbd></button>
+    </header>
+
+    <section class="story-panel" id="story-panel" aria-live="polite">
+      <p class="story-kicker" id="story-kicker"></p>
+      <h2 id="story-title"></h2>
+      <p class="story-body" id="story-body"></p>
+      <p class="story-hint">Drag to look around · click a thread to hold its name on screen</p>
+    </section>
+
+    <ol class="story-feed" id="story-feed" aria-live="polite"></ol>
+
+    <div class="story-card" id="story-card" hidden></div>
+
+    <footer class="story-bar">
+      <div class="story-transport">
+        <button class="story-btn" id="story-prev" type="button" aria-label="Previous chapter">◀</button>
+        <button class="story-btn story-btn--play" id="story-play" type="button">Play</button>
+        <button class="story-btn" id="story-next" type="button" aria-label="Next chapter">▶</button>
+      </div>
+      <ol class="story-dots" id="story-dots"></ol>
+      <div class="story-scrub">
+        <label for="story-scrub">Year</label>
+        <input type="range" id="story-scrub" min="1983" max="2026.6" step="0.1" value="1983" />
+      </div>
+    </footer>
+  </div>
 
   <noscript>
     <p class="noscript">This page draws its charts from a dataset in the browser, so it needs JavaScript enabled.</p>

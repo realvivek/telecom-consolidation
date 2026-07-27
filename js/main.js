@@ -317,6 +317,171 @@ function buildJumpList() {
   update();
 })();
 
+// ------------------------------------------------------------ story mode --
+// The 3D scene is a second way into the same data, not a replacement for the
+// chart — so it is loaded only when someone asks for it.
+(function storyMode() {
+  const launch = $('#launch-story');
+  const root = $('#story');
+
+  const supportsWebGL = (() => {
+    try {
+      const c = document.createElement('canvas');
+      return !!(c.getContext('webgl2') || c.getContext('webgl'));
+    } catch (e) { return false; }
+  })();
+  if (!supportsWebGL) return;   // leave the button hidden; the chart is the whole story anyway
+  launch.hidden = false;
+  $('#nav-story').hidden = false;
+
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let story = null;
+  let fired = new Set();
+  const feed = $('#story-feed');
+  const card = $('#story-card');
+  const scrub = $('#story-scrub');
+  const playBtn = $('#story-play');
+
+  function setPlayLabel() {
+    playBtn.textContent = story && story.state.playing ? 'Pause' : 'Play';
+  }
+
+  function showChapter(ch, i) {
+    $('#story-kicker').textContent = `Chapter ${i + 1} of ${story.chapters.length} · ${ch.kicker}`;
+    $('#story-title').textContent = ch.title.replace(/\.$/, '');
+    $('#story-body').textContent = ch.body;
+    $('#story-dots').querySelectorAll('.story-dot').forEach((d, n) =>
+      d.setAttribute('aria-current', String(n === i)));
+    $('#story-prev').disabled = i === 0;
+    $('#story-next').disabled = i === story.chapters.length - 1;
+    feed.replaceChildren();
+    fired = new Set(DEALS.filter((d) => d.year < ch.yearFrom).map((d) => d.id));
+    setPlayLabel();
+  }
+
+  function pushFeed(d) {
+    const li = document.createElement('li');
+    li.className = d.type === 'failed' ? 'is-failed' : d.type === 'pending' ? 'is-pending' : '';
+    li.innerHTML = `<span class="feed-year">${yr(d.year)} · ${esc(DEAL_KIND[d.type].label)}</span>
+      <span class="feed-title">${esc(d.title)}</span>
+      ${d.valueB ? `<span class="feed-value">${money(d.valueB)}</span>` : ''}`;
+    feed.prepend(li);
+    while (feed.children.length > 4) feed.lastElementChild.remove();
+  }
+
+  function cardFor(found) {
+    if (found.deal) {
+      const d = dealById.get(found.deal);
+      return `<span class="card-kind">${esc(DEAL_KIND[d.type].label)}</span>
+        <h4>${esc(d.title)}</h4>
+        <p class="card-meta">${yr(d.year)} · ${money(d.valueB)} · ${esc(parties(d))}</p>
+        ${d.note ? `<p class="card-note">${esc(d.note)}</p>` : ''}`;
+    }
+    const id = found.company;
+    const c = byId.get(id);
+    const out = mergedInto.get(id);
+    return `<span class="card-kind">${esc(SECTORS[c.sector].name)}</span>
+      <h4>${esc(finalName(id))}</h4>
+      <p class="card-meta">${yr(c.born)}–${isAlive(id) ? 'today' : yr(endYear(id))} · ${
+        out ? `absorbed by ${esc(nameAt(out.acquirer, out.year))} for ${money(out.valueB)}`
+            : id === 'bellsystem' ? 'broken up in 1984' : 'still independent'}</p>
+      ${c.note ? `<p class="card-note">${esc(c.note)}</p>` : ''}`;
+  }
+
+  function placeCard(evt) {
+    const box = card.getBoundingClientRect();
+    card.style.left = `${Math.min(evt.clientX + 16, innerWidth - box.width - 12)}px`;
+    card.style.top = `${Math.min(evt.clientY + 16, innerHeight - box.height - 12)}px`;
+  }
+
+  async function open() {
+    root.hidden = false;
+    document.body.style.overflow = 'hidden';
+    if (!story) {
+      launch.disabled = true;
+      launch.querySelector('.btn-sub').textContent = 'Loading the scene…';
+      const { createStory } = await import('./story.js');
+      story = createStory(root);
+
+      $('#story-dots').innerHTML = story.chapters.map((c, i) =>
+        `<li><button class="story-dot" type="button" data-i="${i}">${esc(c.kicker)}</button></li>`).join('');
+      $('#story-dots').addEventListener('click', (e) => {
+        const b = e.target.closest('.story-dot');
+        if (b) story.setChapter(+b.dataset.i, { play: !reduceMotion });
+      });
+
+      story.on('chapter', showChapter);
+      story.on('chapterEnd', (i) => {
+        setPlayLabel();
+        if (reduceMotion || i >= story.chapters.length - 1) return;
+        setTimeout(() => { if (!story.state.playing) story.setChapter(i + 1); }, 1800);
+      });
+      story.on('year', (year) => {
+        $('#story-clock').textContent = yr(year);
+        scrub.value = String(year);
+        for (const d of DEALS) {
+          if (d.hideNode || fired.has(d.id) || d.year > year) continue;
+          fired.add(d.id);
+          pushFeed(d);
+        }
+      });
+      story.on('hover', (found, e) => {
+        if (!found) { card.hidden = true; return; }
+        card.innerHTML = cardFor(found);
+        card.hidden = false;
+        placeCard(e);
+      });
+      story.on('pick', (found, e) => {
+        if (!found) { card.hidden = true; return; }
+        card.innerHTML = cardFor(found);
+        card.hidden = false;
+        placeCard(e);
+      });
+
+      story.start();
+      story.setChapter(0, { play: !reduceMotion });
+      launch.disabled = false;
+      launch.querySelector('.btn-sub').textContent = 'Eight chapters, in 3D';
+    } else {
+      story.start();
+    }
+  }
+
+  function close() {
+    root.hidden = true;
+    document.body.style.overflow = '';
+    story?.pause();
+    story?.stop();
+    launch.focus();
+  }
+
+  launch.addEventListener('click', open);
+  $('#nav-story').addEventListener('click', open);
+  $('#story-close').addEventListener('click', close);
+  $('#story-reset').addEventListener('click', () => story?.resetView());
+  $('#story-prev').addEventListener('click', () => story?.setChapter(story.state.chapter - 1, { play: !reduceMotion }));
+  $('#story-next').addEventListener('click', () => story?.setChapter(story.state.chapter + 1, { play: !reduceMotion }));
+  playBtn.addEventListener('click', () => {
+    if (!story) return;
+    if (story.state.playing) story.pause(); else story.play();
+    setPlayLabel();
+  });
+  scrub.addEventListener('input', () => {
+    story?.scrubTo(+scrub.value);
+    $('#story-clock').textContent = yr(+scrub.value);
+    setPlayLabel();
+  });
+
+  addEventListener('keydown', (e) => {
+    if (root.hidden) return;
+    if (e.key === 'Escape') close();
+    else if (e.key === 'ArrowRight') $('#story-next').click();
+    else if (e.key === 'ArrowLeft') $('#story-prev').click();
+    else if (e.key === ' ') { e.preventDefault(); playBtn.click(); }
+  });
+  addEventListener('resize', () => { if (!root.hidden) story?.resize(); });
+})();
+
 // ----------------------------------------------------------------- resize --
 let rt;
 let lastWidth = innerWidth;

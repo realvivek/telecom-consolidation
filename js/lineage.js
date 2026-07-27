@@ -4,7 +4,7 @@
 // colour or on hunting for a label.
 
 import {
-  COMPANIES, DEALS, START_YEAR, END_YEAR,
+  COMPANIES, DEALS, SECTORS, START_YEAR, END_YEAR,
   byId, shortOf, nameAt, finalName,
   mergedInto, pendingInto, assetsOutOf, eventsOn, spawnsOf,
   endYear, isAlive, widthAt, absorptionYears,
@@ -255,7 +255,8 @@ function lane(id, L) {
 
   return (
     `<g class="ln-lane" data-company="${esc(id)}" data-sector="${esc(c.sector)}" data-alive="${alive ? '1' : '0'}"` +
-    ` data-search="${esc((c.name + ' ' + (c.renames || []).map((r) => r.name).join(' ') + ' ' + (fam ? fam.name : '')).toLowerCase())}">` +
+    ` data-search="${esc([c.name, ...(c.renames || []).map((r) => r.name), fam?.name, SECTORS[c.sector].name, c.note]
+      .filter(Boolean).join(' ').toLowerCase())}">` +
     `<rect class="ln-hit" x="0" y="${r1(y - ROW / 2)}" width="${L.width}" height="${ROW}"/>` +
     `<text class="ln-name" x="${GUTTER - 12}" y="${r1(y + 4)}">${esc(gutter)}</text>` +
     parts.join('') + label +
