@@ -372,10 +372,26 @@ function buildJumpList() {
   function cardFor(found) {
     if (found.deal) {
       const d = dealById.get(found.deal);
-      return `<span class="card-kind">${esc(DEAL_KIND[d.type].label)}</span>
+      const floor = d.type === 'failed' ? 'A floor that was never built.'
+        : d.type === 'pending' ? 'Still under construction.'
+        : d.type === 'external' ? 'A change of owner — no floor, just a beacon.'
+        : `One storey, ${money(d.valueB)} tall.`;
+      return `<span class="card-kind" data-kind="${d.type}">${esc(DEAL_KIND[d.type].label)}</span>
         <h4>${esc(d.title)}</h4>
         <p class="card-meta">${yr(d.year)} · ${money(d.valueB)} · ${esc(parties(d))}</p>
-        ${d.note ? `<p class="card-note">${esc(d.note)}</p>` : ''}`;
+        ${d.note ? `<p class="card-note">${esc(d.note)}</p>` : ''}
+        <p class="card-foot">${esc(floor)}</p>`;
+    }
+    if (found.tower) {
+      const t = found.tower;
+      const bits = [`${t.floors} ${t.floors === 1 ? 'storey' : 'storeys'}`];
+      if (t.absorbed) bits.push(`${t.absorbed} companies inside`);
+      if (t.blocked) bits.push(`${t.blocked} blocked`);
+      if (t.pending) bits.push(`${t.pending} pending`);
+      return `<span class="card-kind">Still standing</span>
+        <h4>${esc(t.name)}</h4>
+        <p class="card-meta">${t.total ? `${money(t.total)} of acquisitions` : 'Never bought another tracked company'} · on the plaza since ${yr(t.since)}</p>
+        <p class="card-note">${esc(bits.join(' · '))}</p>`;
     }
     const id = found.company;
     const c = byId.get(id);
