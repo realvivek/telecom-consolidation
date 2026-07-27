@@ -28,7 +28,11 @@ const YEAR_X = 2.6;                 // world units per year
 const RING_R = 6.8;                 // radius the family strands ride at
 const EASE = 2.2;                   // years a thread takes to converge on its buyer
 const SAMPLES_PER_YEAR = 4;
-const REVEAL_SECONDS = 15;          // wall-clock length of a full chapter
+/** How long a chapter takes to play. Scaled to the years it covers, so the
+ *  one-year prologue is not held on screen as long as the eleven-year breakup. */
+const chapterSeconds = (ch) => Math.min(16, Math.max(5, 4.5 + (ch.yearTo - ch.yearFrom) * 1.05));
+
+const FOCUS_DIM = 0.26;             // how far the rest of the scene recedes
 
 const COLOR = {
   bg: 0x080810,
@@ -280,7 +284,7 @@ export function createStory(root) {
     label.visible = false;
     scene.add(label);
 
-    threads.set(c.id, { company: c, mesh, material, geometry, points, years, label, el, start, stop, alive });
+    threads.set(c.id, { company: c, mesh, material, geometry, points, years, label, el, start, stop, alive, level: 1, target: 1 });
   }
 
   // ------------------------------------------------------------------ nodes --
@@ -389,8 +393,27 @@ export function createStory(root) {
     state.year = ch.yearFrom;
     state.playing = play && ch.yearTo > ch.yearFrom;
     frameChapter(ch);
+    setEmphasis(ch);
     onChapterChange(ch, state.chapter);
     refresh();
+  }
+
+  /** Everything the chapter is not about recedes, so its subject reads first. */
+  function setEmphasis(ch) {
+    const focus = new Set(ch.focus);
+    for (const [id, t] of threads) {
+      t.target = focus.size === 0 || focus.has(id) ? 1 : FOCUS_DIM;
+    }
+  }
+
+  function applyEmphasis(dt) {
+    const k = Math.min(1, dt * 3.2);
+    for (const t of threads.values()) {
+      const want = t.target ?? 1;
+      t.level += (want - t.level) * k;
+      t.material.opacity = (t.alive ? 1 : 0.85) * t.level;
+      t.material.emissiveIntensity = (t.alive ? 0.55 : 0.12) * t.level;
+    }
   }
 
   // --------------------------------------------------------------- per-frame --
@@ -433,7 +456,7 @@ export function createStory(root) {
 
     candidates.length = 0;
     for (const [id, t] of threads) {
-      if (!focus.has(id) || state.year <= t.start + 0.15) { t.label.visible = false; continue; }
+      if (!focus.has(id) || state.year <= t.start + 0.02) { t.label.visible = false; continue; }
       const year = Math.min(state.year, t.stop);
       posAt(id, year, 0, tmp);
       tmp.y += 0.42;
@@ -454,8 +477,13 @@ export function createStory(root) {
 
     candidates.sort((a, b) => a.priority - b.priority || a.depth - b.depth);
     placed.length = 0;
+    // The deal feed owns the top-right corner; labels stay out of it rather than
+    // printing over it.
+    const feedX = stageW - 360;
+    const feedY = 400;
     for (const c of candidates) {
-      const clash = placed.some((p) => Math.abs(p.sy - c.sy) < 20 && Math.abs(p.sx - c.sx) < 98);
+      const clash = (c.sx > feedX && c.sy < feedY && stageW > 860)
+        || placed.some((p) => Math.abs(p.sy - c.sy) < 20 && Math.abs(p.sx - c.sx) < 98);
       c.t.label.visible = !clash;
       if (clash) continue;
       placed.push(c);
@@ -479,7 +507,7 @@ export function createStory(root) {
 
     const ch = chapters[state.chapter];
     if (state.playing) {
-      const speed = (ch.yearTo - ch.yearFrom) / REVEAL_SECONDS;
+      const speed = (ch.yearTo - ch.yearFrom) / chapterSeconds(ch);
       state.year = Math.min(ch.yearTo, state.year + speed * dt);
       if (state.year >= ch.yearTo - 1e-6) {
         state.playing = false;
@@ -498,6 +526,7 @@ export function createStory(root) {
 
     revealThreads();
     revealNodes(dt);
+    applyEmphasis(dt);
     placeLabels();
 
     composer.render();

@@ -366,7 +366,7 @@ function buildJumpList() {
       <span class="feed-title">${esc(d.title)}</span>
       ${d.valueB ? `<span class="feed-value">${money(d.valueB)}</span>` : ''}`;
     feed.prepend(li);
-    while (feed.children.length > 4) feed.lastElementChild.remove();
+    while (feed.children.length > 3) feed.lastElementChild.remove();
   }
 
   function cardFor(found) {
