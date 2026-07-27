@@ -36,10 +36,14 @@ is taller than most finished buildings in the city. Announced-but-unclosed deals
 scaffolding on the roof; a company changing owner lights a marker rather than adding
 a floor. Click any building to walk up to it and read its storeys by name.
 
-Height is linear in deal value with a minimum so the smallest deals stay visible, and
-façade colour is architecture rather than data. Perspective makes 3D heights hard to
-compare precisely, which is why the flat bar chart on the page remains the accurate
-view and this is the one you walk around.
+The architecture is borrowed from Chicago — Sears Tower setbacks, a tapered Hancock
+tube, Aon's limestone slab, Board of Trade deco, Tribune Gothic pinnacles, Wrigley
+terracotta, Marina City cylinders, Monadnock brick, Mies glass boxes — under a blue
+sky with a low afternoon sun and a ridge of hills on the horizon. None of it means
+anything: massing, façade and crown are decoration, and only storey height is data.
+Height is linear in deal value with a minimum so the smallest deals stay visible.
+Perspective makes 3D heights hard to compare precisely, which is why the flat bar
+chart on the page remains the accurate view and this is the one you walk around.
 
 Supporting views: how many companies were still independent in each year, how much
 deal value each survivor pulled in, and a filterable ledger of all 76 transactions.
@@ -56,9 +60,12 @@ No build step, no bundler, no CDN — a static page of ES modules.
   hues were tried first and dropped — no five-hue set from the palette clears the
   all-pairs gates, and identity here is carried by the name in the gutter anyway.
 - **Story mode**: [three.js](https://threejs.org), vendored locally and loaded
-  through an import map. A daylit scene: gradient sky dome, a single sun with soft
-  shadow mapping, procedural façade and asphalt textures generated on canvas, and
-  instanced pedestrians and trees. `CSS2DRenderer` gives crisp DOM labels, with a
+  through an import map. A daylit scene: gradient sky dome, a low sun with soft
+  shadow mapping and a halo, three procedurally generated horizon ridges painted
+  with aerial perspective, per-style façade and asphalt textures drawn on canvas,
+  and instanced pedestrians and trees. Each building's massing comes from a style
+  `profile(fraction) → width` function, which is what produces the setbacks and
+  tapers. `CSS2DRenderer` gives crisp DOM labels, with a
   screen-space declutter pass that drops any label which would overprint a nearer
   one or land on the interface. Loaded lazily — the module is only fetched when
   someone opens it.

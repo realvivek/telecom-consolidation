@@ -391,7 +391,8 @@ function buildJumpList() {
       return `<span class="card-kind">Still standing</span>
         <h4>${esc(t.name)}</h4>
         <p class="card-meta">${t.total ? `${money(t.total)} of acquisitions` : 'Never bought another tracked company'} · on the plaza since ${yr(t.since)}</p>
-        <p class="card-note">${esc(bits.join(' · '))}</p>`;
+        <p class="card-note">${esc(bits.join(' · '))}</p>
+        <p class="card-foot">${esc(t.style)} — architecture, not data</p>`;
     }
     const id = found.company;
     const c = byId.get(id);

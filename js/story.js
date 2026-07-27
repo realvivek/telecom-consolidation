@@ -12,10 +12,12 @@
 // on the plaza.
 //
 // Height is linear in deal value with a minimum, so the smallest deals are
-// visible at all; exact figures ride on the labels and in the ledger. Façade
-// colour is architecture, not data — it carries no meaning. Perspective makes
-// 3D heights hard to compare precisely, so the flat bar chart on the page stays
-// the accurate view and this is the one you walk around.
+// visible at all; exact figures ride on the labels and in the ledger. The
+// architecture is borrowed from Chicago — bundled tubes, art-deco setbacks,
+// terracotta, Chicago School masonry — and carries no meaning at all: massing,
+// façade and crown are decoration, and only storey height is data. Perspective
+// makes 3D heights hard to compare precisely, so the flat bar chart on the page
+// stays the accurate view and this is the one you walk around.
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -47,9 +49,18 @@ const MONUMENT_Z = -27.5;   // behind the plaza, so the empty 1983 city still ha
 
 const RISE_YEARS = 0.55;     // how long a storey takes to slide into place
 
-const SKY_TOP = 0x3d7ec9;
-const SKY_HORIZON = 0xd4e5f5;
-const SUN_DIR = new THREE.Vector3(0.55, 0.72, 0.42).normalize();
+const TAU = Math.PI * 2;
+const SKY_TOP = 0x2f74c8;
+const SKY_MID = 0x74a9dd;
+const SKY_HORIZON = 0xd3e6f6;
+// Low and a little behind the default view, so the sun is actually in frame and
+// the buildings throw long afternoon shadows across the plaza.
+const SUN_DIR = new THREE.Vector3(0.402, 0.156, -0.903).normalize();
+const RIDGES = [
+  { radius: 400, min: 14, max: 40, seed: 8.9, peak: '#93aec6', haze: '#c6dbee' },
+  { radius: 345, min: 11, max: 32, seed: 4.2, peak: '#7c9ab6', haze: '#bcd4ea' },
+  { radius: 300, min: 8, max: 25, seed: 1.7, peak: '#6787a6', haze: '#b0cbe4' },
+];
 
 const COLOR = {
   ground: 0xc3cbbe,
@@ -61,15 +72,74 @@ const COLOR = {
   stone: 0xbfc0b8,
 };
 
-// Architectural tints — deliberately near-neutral so no one reads them as data.
-const FACADES = [
-  { wall: '#f3ecdc', glass: '#8ba6c2' },
-  { wall: '#e3eaf2', glass: '#7595b4' },
-  { wall: '#efdfcb', glass: '#9aa9b6' },
-  { wall: '#dfece7', glass: '#7d9fae' },
-  { wall: '#eeeae3', glass: '#8ba0bb' },
-  { wall: '#e8dfd2', glass: '#93a4b8' },
-];
+// Architecture, borrowed from Chicago. Massing, façade and crown are decoration
+// — only storey HEIGHT carries data. `profile` returns the width multiplier at a
+// given fraction of the finished height, which is what gives each building its
+// setbacks and taper.
+const STYLES = {
+  bundle: {
+    label: 'Bundled tube, after the Sears Tower',
+    wall: '#98a0a8', glass: '#44505d', plan: 'box', mullions: true,
+    profile: (f) => (f < 0.40 ? 1 : f < 0.64 ? 0.84 : f < 0.84 ? 0.64 : 0.46),
+    crown: 'antennas',
+  },
+  taper: {
+    label: 'Tapered tube, after the John Hancock Center',
+    wall: '#5e6167', glass: '#323a45', plan: 'box', mullions: true,
+    profile: (f) => 1 - f * 0.44,
+    crown: 'antennas',
+  },
+  limestone: {
+    label: 'Limestone slab, after the Aon Center',
+    wall: '#ece7dc', glass: '#93a7bb', plan: 'slab', piers: true,
+    profile: () => 1,
+    crown: 'parapet',
+  },
+  deco: {
+    label: 'Art-deco setbacks, after the Board of Trade',
+    wall: '#e1d7c0', glass: '#7f8c9b', plan: 'box', piers: true,
+    profile: (f) => (f < 0.48 ? 1 : f < 0.76 ? 0.79 : 0.58),
+    crown: 'pyramid',
+  },
+  gothic: {
+    label: 'Neo-Gothic, after the Tribune Tower',
+    wall: '#dcd2bd', glass: '#87867c', plan: 'box', piers: true,
+    profile: (f) => (f < 0.85 ? 1 : 0.7),
+    crown: 'pinnacles',
+  },
+  terracotta: {
+    label: 'White terracotta, after the Wrigley Building',
+    wall: '#f7f2e7', glass: '#a3b6c7', plan: 'box', piers: true,
+    profile: (f) => (f < 0.7 ? 1 : 0.76),
+    crown: 'clocktower',
+  },
+  glassbox: {
+    label: 'Steel and glass, after 860–880 Lake Shore Drive',
+    wall: '#41454b', glass: '#90b3cd', plan: 'slab', mullions: true,
+    profile: () => 1,
+    crown: 'parapet',
+  },
+  round: {
+    label: 'Cylindrical, after Marina City',
+    wall: '#ded8cc', glass: '#8f96a2', plan: 'round',
+    profile: () => 1,
+    crown: 'disc',
+  },
+  masonry: {
+    label: 'Chicago School masonry, after the Monadnock Building',
+    wall: '#a8735b', glass: '#cfdae4', plan: 'slab', brick: true,
+    profile: () => 1,
+    crown: 'cornice',
+  },
+};
+// The tallest buildings get the styles that were invented for tall buildings.
+const TALL_ORDER = ['bundle', 'taper', 'limestone', 'deco', 'gothic', 'terracotta', 'glassbox', 'round'];
+const LOW_ORDER = ['masonry', 'round', 'terracotta', 'glassbox', 'gothic', 'deco'];
+
+/** Footprint in x and z for a given style at a given width. */
+function planDims(style, w) {
+  return style.plan === 'slab' ? { x: w * 1.34, z: w * 0.66 } : { x: w, z: w };
+}
 
 const CAR_COLORS = [0xd8d8d8, 0x33507a, 0x8c2f2f, 0x2f5c46, 0xe0e0e0, 0x4a4a52, 0xb9743a];
 const CLOTHES = [0x3d5a80, 0x8a4b3c, 0x445a44, 0x6b5b8a, 0x9a6a3c, 0x50535c, 0xa04a5a];
@@ -102,7 +172,7 @@ function buildTowers() {
     let top = PLINTH_H;
     const floors = acquisitions.map((d) => {
       const h = floorHeight(d.valueB);
-      const floor = { deal: d, base: top, h, width: d.type === 'asset' ? ASSET_W : TOWER_W };
+      const floor = { deal: d, base: top, h, narrow: d.type === 'asset' };
       top += h + FLOOR_GAP;
       return floor;
     });
@@ -133,7 +203,7 @@ function buildTowers() {
     const col = i % GRID_COLS;
     t.x = (col - (GRID_COLS - 1) / 2) * GRID_STEP;
     t.z = (row - (rows - 1) / 2) * GRID_STEP;
-    t.facade = FACADES[i % FACADES.length];
+    t.style = STYLES[i < 8 ? TALL_ORDER[i] : LOW_ORDER[(i - 8) % LOW_ORDER.length]];
     t.allDeals = [...t.floors.map((f) => f.deal), ...t.ghosts, ...t.pending, ...t.ownership];
   });
   return towers;
@@ -141,22 +211,42 @@ function buildTowers() {
 
 // -------------------------------------------------------------- textures ---
 // Deterministic patterns — no RNG, so the city looks the same every visit.
-function facadeTexture({ wall, glass }) {
+function facadeTexture(style) {
+  const { wall, glass, piers, mullions, brick } = style;
   const c = document.createElement('canvas');
   c.width = c.height = 64;
   const g = c.getContext('2d');
   g.fillStyle = wall;
   g.fillRect(0, 0, 64, 64);
+
+  // Masonry reads as small punched openings in a load-bearing wall; the curtain
+  // walls read as glass held in a grid.
+  const winW = brick ? 7 : 10;
+  const winX = brick ? 5 : 3;
   for (let row = 0; row < 4; row++) {
     for (let col = 0; col < 4; col++) {
       const bright = (col * 5 + row * 11) % 7 > 4;   // a few panes catching the sun
       g.fillStyle = bright ? '#cfe0ee' : glass;
-      g.fillRect(col * 16 + 3, row * 16 + 4, 10, 8);
+      g.fillRect(col * 16 + winX, row * 16 + 4, winW, brick ? 9 : 8);
       g.fillStyle = 'rgba(255,255,255,0.35)';        // sill highlight
-      g.fillRect(col * 16 + 3, row * 16 + 12, 10, 1);
+      g.fillRect(col * 16 + winX, row * 16 + 12, winW, 1);
     }
-    g.fillStyle = 'rgba(90,90,95,0.10)';             // floor band
-    g.fillRect(0, row * 16 + 14, 64, 2);
+    g.fillStyle = brick ? 'rgba(70,45,35,0.14)' : 'rgba(90,90,95,0.10)';
+    g.fillRect(0, row * 16 + 14, 64, 2);             // floor band
+  }
+  if (piers) {                                       // deep vertical piers
+    g.fillStyle = 'rgba(255,255,255,0.5)';
+    for (let col = 0; col < 4; col++) g.fillRect(col * 16 + 13, 0, 3, 64);
+    g.fillStyle = 'rgba(60,55,45,0.10)';
+    for (let col = 0; col < 4; col++) g.fillRect(col * 16 + 16, 0, 1, 64);
+  }
+  if (mullions) {                                    // slim steel mullions
+    g.fillStyle = 'rgba(20,22,26,0.55)';
+    for (let col = 0; col < 4; col++) g.fillRect(col * 16 + 14, 0, 2, 64);
+  }
+  if (brick) {                                       // course lines
+    g.fillStyle = 'rgba(255,255,255,0.07)';
+    for (let y = 2; y < 64; y += 4) g.fillRect(0, y, 64, 1);
   }
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
@@ -184,6 +274,60 @@ function roadTexture() {
   return t;
 }
 
+/** Soft radial falloff for the sun's halo. */
+function glowTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grad.addColorStop(0, 'rgba(255,250,236,0.95)');
+  grad.addColorStop(0.14, 'rgba(255,243,213,0.55)');
+  grad.addColorStop(0.42, 'rgba(255,238,205,0.14)');
+  grad.addColorStop(1, 'rgba(255,238,205,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 128, 128);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/** A ring of hills on the horizon. Unlit and unfogged — this is scenery, so it
+ *  is painted with aerial perspective (hazy at the base, cooler at the peaks)
+ *  rather than dropped into the lighting model. */
+function makeRidge({ radius, min, max, seed, peak, haze }) {
+  const segments = 200;
+  const position = [];
+  const color = [];
+  const heightAt = (a) => {
+    const n = 0.5 + 0.5 * (
+      Math.sin(a * 3 + seed) * 0.44
+      + Math.sin(a * 7 + seed * 2.3) * 0.28
+      + Math.sin(a * 13 + seed * 4.1) * 0.18
+      + Math.sin(a * 23 + seed * 1.7) * 0.1);
+    return min + (max - min) * n;
+  };
+  const base = -1;
+  const p = new THREE.Color(peak);
+  const h = new THREE.Color(haze);
+  for (let i = 0; i < segments; i++) {
+    const a0 = (i / segments) * TAU;
+    const a1 = ((i + 1) / segments) * TAU;
+    const x0 = Math.sin(a0) * radius, z0 = Math.cos(a0) * radius;
+    const x1 = Math.sin(a1) * radius, z1 = Math.cos(a1) * radius;
+    const y0 = heightAt(a0), y1 = heightAt(a1);
+    position.push(x0, base, z0, x1, base, z1, x1, y1, z1);
+    position.push(x0, base, z0, x1, y1, z1, x0, y0, z0);
+    color.push(h.r, h.g, h.b, h.r, h.g, h.b, p.r, p.g, p.b);
+    color.push(h.r, h.g, h.b, p.r, p.g, p.b, p.r, p.g, p.b);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(position, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(color, 3));
+  return new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    vertexColors: true, side: THREE.DoubleSide, fog: false,
+  }));
+}
+
 /** A point walking clockwise round a square loop of half-size h. */
 function loopPoint(s, h, out) {
   const side = h * 2;
@@ -204,7 +348,7 @@ export function createStory(root) {
   const track = (x) => { disposables.push(x); return x; };
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(SKY_HORIZON, 90, 320);
+  scene.fog = new THREE.Fog(SKY_HORIZON, 110, 340);
 
   const camera = new THREE.PerspectiveCamera(46, 1, 0.5, 900);
   camera.position.set(0, 30, 70);
@@ -236,46 +380,78 @@ export function createStory(root) {
       fog: false,
       uniforms: {
         top: { value: new THREE.Color(SKY_TOP) },
+        mid: { value: new THREE.Color(SKY_MID) },
         horizon: { value: new THREE.Color(SKY_HORIZON) },
       },
       vertexShader: `varying vec3 vPos;
         void main(){ vPos = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-      fragmentShader: `uniform vec3 top; uniform vec3 horizon; varying vec3 vPos;
+      fragmentShader: `uniform vec3 top; uniform vec3 mid; uniform vec3 horizon; varying vec3 vPos;
         void main(){
-          float h = clamp(normalize(vPos).y * 1.7 + 0.10, 0.0, 1.0);
-          gl_FragColor = vec4(mix(horizon, top, pow(h, 0.55)), 1.0);
+          float h = clamp(normalize(vPos).y, -0.1, 1.0);
+          vec3 lower = mix(horizon, mid, smoothstep(0.0, 0.045, h));
+          gl_FragColor = vec4(mix(lower, top, smoothstep(0.03, 0.34, h)), 1.0);
         }`,
     })),
   );
   scene.add(sky);
 
-  scene.add(new THREE.HemisphereLight(0xdcecff, 0x8f9484, 1.2));
+  scene.add(new THREE.HemisphereLight(0xdcecff, 0x9aa08e, 1.5));
   const sun = new THREE.DirectionalLight(0xfff3dd, 2.4);
-  sun.position.copy(SUN_DIR).multiplyScalar(95);
+  sun.position.copy(SUN_DIR).multiplyScalar(260);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.camera.near = 20;
-  sun.shadow.camera.far = 230;
-  sun.shadow.camera.left = -48;
-  sun.shadow.camera.right = 48;
-  sun.shadow.camera.top = 56;
-  sun.shadow.camera.bottom = -48;
+  sun.shadow.camera.far = 520;
+  sun.shadow.camera.left = -80;
+  sun.shadow.camera.right = 80;
+  sun.shadow.camera.top = 176;
+  sun.shadow.camera.bottom = -110;
   sun.shadow.bias = -0.0009;
   sun.shadow.normalBias = 0.035;
   scene.add(sun, sun.target);
 
-  // The sun itself, so the light has a source you can see.
-  const sunDisc = new THREE.Mesh(
-    track(new THREE.CircleGeometry(11, 32)),
-    track(new THREE.MeshBasicMaterial({ color: 0xfff8e8, fog: false })),
-  );
-  sunDisc.position.copy(SUN_DIR).multiplyScalar(400);
-  sunDisc.lookAt(0, 0, 0);
-  scene.add(sunDisc);
+  // A fill from the camera side, so a backlit façade is still a pale stone wall.
+  const fill = new THREE.DirectionalLight(0xd8e8ff, 0.75);
+  fill.position.set(-0.3, 0.55, 1).multiplyScalar(80);
+  scene.add(fill);
+
+  // The sun itself, with a halo, so the light has a source you can see.
+  {
+    const sunAt = SUN_DIR.clone().multiplyScalar(430);
+    const disc = new THREE.Mesh(
+      track(new THREE.CircleGeometry(9, 40)),
+      track(new THREE.MeshBasicMaterial({ color: 0xfffaf0, fog: false })),
+    );
+    disc.position.copy(sunAt);
+    disc.lookAt(0, 0, 0);
+    scene.add(disc);
+
+    const halo = new THREE.Sprite(track(new THREE.SpriteMaterial({
+      map: track(glowTexture()),
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.8,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: false,
+    })));
+    halo.position.copy(sunAt);
+    halo.scale.setScalar(78);
+    scene.add(halo);
+  }
+
+  // Mountains on the horizon, painted rather than lit — near ridges darker,
+  // far ones hazier, each fading into the sky along its base.
+  for (const r of RIDGES) {
+    const mesh = makeRidge(r);
+    track(mesh.geometry);
+    track(mesh.material);
+    scene.add(mesh);
+  }
 
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.2, 0.5, 0.93);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.13, 0.32, 0.97);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
 
@@ -284,7 +460,7 @@ export function createStory(root) {
 
   {
     const ground = new THREE.Mesh(
-      track(new THREE.PlaneGeometry(700, 700)),
+      track(new THREE.PlaneGeometry(1400, 1400)),
       track(new THREE.MeshStandardMaterial({ color: COLOR.ground, roughness: 1 })),
     );
     ground.rotation.x = -Math.PI / 2;
@@ -426,10 +602,81 @@ export function createStory(root) {
 
   // ------------------------------------------------------------ buildings --
   const boxGeo = track(new THREE.BoxGeometry(1, 1, 1));
+  const cylGeo = track(new THREE.CylinderGeometry(0.5, 0.5, 1, 24, 1));
   const edgeGeo = track(new THREE.EdgesGeometry(boxGeo));
+
+  /** What a building wears on its head. Pure decoration — it sits above the
+   *  parapet and is never a storey, so it never stands for a deal. */
+  function makeCrown(style, w, keep) {
+    const group = new THREE.Group();
+    const stone = keep(new THREE.MeshStandardMaterial({ color: COLOR.roof, roughness: 0.85 }));
+    const metal = keep(new THREE.MeshStandardMaterial({ color: 0x8d9298, roughness: 0.4, metalness: 0.6 }));
+    const add = (mesh, y) => { mesh.position.y = y; mesh.castShadow = true; group.add(mesh); return mesh; };
+
+    const parapet = new THREE.Mesh(style.plan === 'round' ? cylGeo : boxGeo, stone);
+    const pd = planDims(style, w + 0.26);
+    parapet.scale.set(pd.x, 0.18, pd.z);
+    add(parapet, 0.09);
+
+    switch (style.crown) {
+      case 'antennas': {
+        for (const [dx, h] of [[-w * 0.16, 2.6], [w * 0.16, 1.9]]) {
+          const mast = new THREE.Mesh(keep(new THREE.CylinderGeometry(0.045, 0.06, h, 6)), metal);
+          mast.position.x = dx;
+          add(mast, 0.18 + h / 2);
+        }
+        break;
+      }
+      case 'pyramid': {
+        const step = new THREE.Mesh(boxGeo, stone);
+        step.scale.set(w * 0.62, 0.5, w * 0.62);
+        add(step, 0.43);
+        const cap = new THREE.Mesh(keep(new THREE.ConeGeometry(w * 0.34, 1.1, 4)), stone);
+        cap.rotation.y = Math.PI / 4;
+        add(cap, 1.23);
+        break;
+      }
+      case 'pinnacles': {
+        const spike = keep(new THREE.ConeGeometry(0.16, 0.95, 5));
+        for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+          const m = new THREE.Mesh(spike, stone);
+          m.position.set(dx * w * 0.36, 0, dz * w * 0.36);
+          add(m, 0.65);
+        }
+        const centre = new THREE.Mesh(keep(new THREE.ConeGeometry(w * 0.22, 1.6, 8)), stone);
+        add(centre, 0.98);
+        break;
+      }
+      case 'clocktower': {
+        const shaft = new THREE.Mesh(boxGeo, stone);
+        shaft.scale.set(w * 0.46, 1.5, w * 0.46);
+        add(shaft, 0.93);
+        const cupola = new THREE.Mesh(keep(new THREE.CylinderGeometry(w * 0.16, w * 0.24, 0.5, 10)), stone);
+        add(cupola, 1.93);
+        break;
+      }
+      case 'disc': {
+        const roof = new THREE.Mesh(cylGeo, stone);
+        roof.scale.set(w * 1.14, 0.22, w * 1.14);
+        add(roof, 0.28);
+        break;
+      }
+      case 'cornice': {
+        const cornice = new THREE.Mesh(boxGeo, stone);
+        const cd = planDims(style, w + 0.9);
+        cornice.scale.set(cd.x, 0.4, cd.z);
+        add(cornice, 0.34);
+        break;
+      }
+      default:
+        break;
+    }
+    return group;
+  }
   const picks = [];
 
   function facade(tower, width, height, depth) {
+    const round = tower.style.plan === 'round';
     const tex = track(tower.tex.clone());
     tex.needsUpdate = true;
     tex.anisotropy = maxAnisotropy;
@@ -437,7 +684,7 @@ export function createStory(root) {
       Math.max(1, Math.round(width / FACADE_TILE)),
       Math.max(1, Math.round(height / FACADE_TILE)),
     );
-    const mesh = new THREE.Mesh(boxGeo, track(new THREE.MeshStandardMaterial({
+    const mesh = new THREE.Mesh(round ? cylGeo : boxGeo, track(new THREE.MeshStandardMaterial({
       map: tex, roughness: 0.72, metalness: 0.12,
     })));
     mesh.scale.set(width, height, depth);
@@ -459,21 +706,31 @@ export function createStory(root) {
   }
 
   for (const t of towers) {
-    t.tex = track(facadeTexture(t.facade));
+    t.tex = track(facadeTexture(t.style));
     const group = new THREE.Group();
     group.position.set(t.x, 0, t.z);
     scene.add(group);
     t.group = group;
 
+    // The width at a given height comes from the style, so setbacks and taper
+    // are architecture; the height of each storey is still the deal value.
+    const widthAt = (base) => TOWER_W * t.style.profile(Math.min(1, base / Math.max(t.height, 0.001)));
+    t.topWidth = widthAt(t.height);
+
     // The plinth is the founding company itself — it appears the year it did.
-    const plinth = facade(t, TOWER_W + 0.4, PLINTH_H, TOWER_W + 0.4);
+    const baseDims = planDims(t.style, widthAt(0) + 0.4);
+    const plinth = facade(t, baseDims.x, PLINTH_H, baseDims.z);
     plinth.position.y = 0.16 + PLINTH_H / 2;
     plinth.userData.tower = t;
     group.add(plinth);
     picks.push(plinth);
 
     for (const f of t.floors) {
-      const mesh = facade(t, f.width, f.h, f.width);
+      const w = widthAt(f.base) * (f.narrow ? 0.78 : 1);
+      const dims = planDims(t.style, w);
+      f.dx = dims.x / 2;
+      f.dz = dims.z / 2;
+      const mesh = facade(t, dims.x, f.h, dims.z);
       mesh.position.y = 0.16 + f.base + f.h / 2;
       mesh.userData.deal = f.deal.id;
       mesh.userData.tower = t;
@@ -488,22 +745,20 @@ export function createStory(root) {
       el.innerHTML = `<b>${f.deal.target ? nameAt(f.deal.target, f.deal.year) : f.deal.title}</b>`
         + `<i>${yr(f.deal.year)} · ${money(f.deal.valueB)}</i>`;
       f.label = new CSS2DObject(el);
-      f.label.position.set(f.width / 2 + 1.9, 0.16 + f.base + f.h / 2, f.width / 2 - 0.2);
+      f.label.position.set(f.dx + 1.9, 0.16 + f.base + f.h / 2, f.dz - 0.2);
       f.label.visible = false;
       group.add(f.label);
     }
 
-    // A parapet, so the building has a top rather than just stopping.
-    t.roof = new THREE.Mesh(boxGeo, track(new THREE.MeshStandardMaterial({ color: COLOR.roof, roughness: 0.85 })));
-    t.roof.scale.set(TOWER_W + 0.26, 0.18, TOWER_W + 0.26);
-    t.roof.castShadow = true;
+    // The crown: a parapet plus whatever the style tops itself off with.
+    t.roof = makeCrown(t.style, t.topWidth, track);
     group.add(t.roof);
 
     // Deals that died, at the height they would have reached.
     t.ghostParts = t.ghosts.map((d) => {
       const h = floorHeight(d.valueB);
       const node = outlineBox(TOWER_W * 0.94, h, TOWER_W * 0.94, COLOR.ghost, 0.16);
-      node.position.set(TOWER_W + 1.7, 0.16 + t.heightAt(d.year) + h / 2, 0);
+      node.position.set(TOWER_W * 1.1 + 1.7, 0.16 + t.heightAt(d.year) + h / 2, 0);
       node.visible = false;
       group.add(node);
       const hit = new THREE.Mesh(boxGeo, track(new THREE.MeshBasicMaterial({ visible: false })));
@@ -519,7 +774,7 @@ export function createStory(root) {
     let pendingBase = t.height;
     t.pendingParts = t.pending.map((d) => {
       const h = floorHeight(d.valueB);
-      const node = outlineBox(TOWER_W, h, TOWER_W, COLOR.pending, 0.12);
+      const node = outlineBox(t.topWidth, h, t.topWidth, COLOR.pending, 0.12);
       node.position.set(0, 0.16 + pendingBase + h / 2, 0);
       pendingBase += h + FLOOR_GAP;
       node.visible = false;
@@ -541,7 +796,7 @@ export function createStory(root) {
           color: COLOR.beacon, emissive: COLOR.beacon, emissiveIntensity: 0.7, roughness: 0.4,
         })),
       );
-      mesh.position.set(TOWER_W / 2 + 0.16, 0.16 + t.heightAt(d.year) - 0.35, TOWER_W / 2 + 0.16);
+      mesh.position.set(TOWER_W / 2 + 0.3, 0.16 + t.heightAt(d.year) - 0.35, TOWER_W / 2 + 0.3);
       mesh.visible = false;
       mesh.userData.deal = d.id;
       group.add(mesh);
@@ -630,7 +885,7 @@ export function createStory(root) {
   function frameChapter(ch) {
     fitTo(ch.active, ch.yearTo, ch.active.length ? 1.35 : 1.2);
     shot.azimuth = 0;
-    shot.pitch = 0.32;
+    shot.pitch = 0.21;
     spin = 0;
     state.selected = null;
     aimCamera();
@@ -643,7 +898,7 @@ export function createStory(root) {
     const vFov = (camera.fov * Math.PI) / 180;
     shot.dist = Math.max((h / 2 + 4) / Math.tan(vFov / 2), 16) * 1.36;
     shot.azimuth = Math.atan2(t.x, t.z + 30);
-    shot.pitch = 0.24;
+    shot.pitch = 0.17;
     spin = 0;
     state.userMoved = false;
     aimCamera();
@@ -883,6 +1138,7 @@ export function createStory(root) {
       since: data.tower.born,
       pending: data.tower.pending.length,
       blocked: data.tower.ghosts.length,
+      style: data.tower.style.label,
     } : undefined,
   });
 
