@@ -53,7 +53,7 @@ export const COMPANIES = [
     note: 'Sprint’s local phone business, spun off in 2006.' },
   { id: 'citizens', name: 'Citizens Utilities', sector: 'wireline', born: 1983, weight: 1.5,
     renames: [{ year: 2001.5, name: 'Frontier' }] },
-  { id: 'frontiercorp', name: 'Frontier Corp. (Rochester Tel)', sector: 'wireline', born: 1983, weight: 1 },
+  { id: 'frontiercorp', name: 'Frontier Corp. (Rochester Tel)', short: 'Frontier Corp.', sector: 'wireline', born: 1983, weight: 1 },
   { id: 'windstream', name: 'Windstream', sector: 'wireline', born: 2006.5, spawnedFrom: 'alltel', weight: 1.5,
     note: 'Alltel’s wireline business merged with Valor Communications. Ch. 11 in 2019, emerged 2021.' },
   { id: 'brightspeed', name: 'Brightspeed', sector: 'wireline', born: 2022.75, spawnedFrom: 'centurytel', weight: 1,
@@ -62,7 +62,7 @@ export const COMPANIES = [
     note: 'Frontier’s Pacific Northwest operations, carved out for $1.35B by a Searchlight-led group.' },
 
   // ---- Wireless ----
-  { id: 'sprint', name: 'Sprint (United Telecom)', sector: 'wireless', born: 1983, weight: 2.5,
+  { id: 'sprint', name: 'Sprint (United Telecom)', short: 'Sprint', sector: 'wireless', born: 1983, weight: 2.5,
     note: 'Long-distance fiber pioneer turned #3 wireless carrier.' },
   { id: 'nextel', name: 'Nextel', sector: 'wireless', born: 1987, weight: 1.5,
     note: 'Built a national network out of taxi-dispatch radio spectrum.' },

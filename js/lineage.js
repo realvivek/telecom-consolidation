@@ -1,221 +1,288 @@
-// Lineage engine: turns companies + deals into positioned 3D thread paths.
-// Time runs along +z. Each sector owns an angular wedge around the axis;
-// each company holds a "home" polar slot inside its wedge. Mergers ease the
-// target's path into the acquirer's position, ending in a node.
+// The lineage chart: one horizontal thread per company, time running left to
+// right, threads that were bought sweeping into the thread that bought them.
+// Every thread carries its name in a fixed left gutter, so nothing depends on
+// colour or on hunting for a label.
 
-import * as THREE from 'three';
-import { SECTORS, COMPANIES, DEALS, START_YEAR, END_YEAR } from './data.js';
+import {
+  COMPANIES, DEALS, START_YEAR, END_YEAR,
+  byId, shortOf, nameAt, finalName,
+  mergedInto, pendingInto, assetsOutOf, eventsOn, spawnsOf,
+  endYear, isAlive, widthAt, absorptionYears,
+  FAMILIES, familyOf, money, yr, BREAKUP_YEAR,
+} from './model.js';
 
-export const UNITS_PER_YEAR = 24;
-export const yearToZ = (y) => (y - START_YEAR) * UNITS_PER_YEAR;
-export const zToYear = (z) => START_YEAR + z / UNITS_PER_YEAR;
+// ---- geometry -------------------------------------------------------------
+export const ROW = 24;
+const GROUP_HEAD = 42;
+const GROUP_GAP = 14;
+const TOP_PAD = 10;
+const BOTTOM_PAD = 24;
+const GUTTER = 166;
+const RIGHT_PAD = 132;
+/** Past this vertical distance a connector would cross half the chart, so it
+ *  becomes a labelled stub instead of a line you have to trace. */
+const STUB_ABOVE = 210;
+export const MIN_WIDTH = 980;
 
-const DEG = Math.PI / 180;
-const byId = new Map(COMPANIES.map((c) => [c.id, c]));
+const SPAN = END_YEAR - START_YEAR;
+const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const r1 = (n) => Math.round(n * 10) / 10;
 
-// Deterministic per-company hash for wobble phase (stable layout, no RNG).
-function hash(str) {
-  let h = 2166136261;
-  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
-  return (h >>> 0) / 4294967295;
+let layout = null;
+
+/** Assign every company a row, grouped by the trunk it flowed into. */
+function buildLayout(width) {
+  const plotW = width - GUTTER - RIGHT_PAD;
+  const X = (year) => GUTTER + ((year - START_YEAR) / SPAN) * plotW;
+
+  const rows = new Map();  // companyId -> y
+  const groups = [];
+  let y = TOP_PAD;
+
+  // The Bell System sits above everything — it is where the story starts.
+  groups.push({ id: '__bell', name: 'Where it starts', meta: 'One regulated monopoly', headY: y, lanes: ['bellsystem'] });
+  y += GROUP_HEAD;
+  rows.set('bellsystem', y + ROW / 2);
+  y += ROW + GROUP_GAP;
+
+  for (const fam of FAMILIES) {
+    const meta = fam.standalone
+      ? `${fam.lanes.length} companies · neither absorbed a tracked company nor were absorbed by one`
+      : `${fam.absorbed} ${fam.absorbed === 1 ? 'company' : 'companies'} flowed in · ${money(fam.valueB)} of deals`;
+    groups.push({ id: fam.id, name: fam.standalone ? fam.name : `${fam.name} — ${fam.lanes.length} threads`, meta, headY: y, lanes: fam.lanes, family: fam });
+    y += GROUP_HEAD;
+    for (const id of fam.lanes) { rows.set(id, y + ROW / 2); y += ROW; }
+    y += GROUP_GAP;
+  }
+
+  layout = { width, plotW, X, rows, groups, height: y + BOTTOM_PAD };
+  return layout;
 }
 
-// ---- home slots -----------------------------------------------------------
-// Companies in each sector get evenly spaced angles inside the wedge, with
-// radius alternating over three shells so neighbors don't overlap.
-const homes = new Map();
-{
-  const bySector = {};
-  for (const c of COMPANIES) (bySector[c.sector] ||= []).push(c);
-  for (const [key, list] of Object.entries(bySector)) {
-    const s = SECTORS[key];
-    list.forEach((c, i) => {
-      const t = list.length === 1 ? 0.5 : i / (list.length - 1);
-      const angle = (s.angle - s.spread / 2 + s.spread * t) * DEG;
-      const shell = 15 + (i % 3) * 6 + hash(c.id) * 2.5;
-      homes.set(c.id, { angle, radius: shell });
+export const getLayout = () => layout;
+
+// ---- path helpers ---------------------------------------------------------
+
+/** Smooth S-curve leaving horizontally and arriving horizontally. */
+function flow(x0, y0, x1, y1) {
+  const dx = x1 - x0;
+  return `M${r1(x0)} ${r1(y0)}C${r1(x0 + dx * 0.5)} ${r1(y0)},${r1(x1 - dx * 0.5)} ${r1(y1)},${r1(x1)} ${r1(y1)}`;
+}
+
+const reach = (dy) => Math.min(92, Math.max(22, Math.abs(dy) * 0.3));
+const dotR = (v) => Math.min(6.5, 2.3 + Math.log10(1 + (v || 0)) * 1.5);
+
+// ---- render ---------------------------------------------------------------
+
+export function renderLineage(container, width) {
+  const L = buildLayout(Math.max(width, MIN_WIDTH));
+  const { X, rows, groups, plotW } = L;
+  const xStart = X(START_YEAR);
+  const xEnd = X(END_YEAR);
+
+  const grid = [];
+  for (let year = 1985; year <= 2025; year += 5) {
+    grid.push(`<line class="ln-grid" x1="${r1(X(year))}" y1="0" x2="${r1(X(year))}" y2="${L.height}"/>`);
+  }
+
+  const heads = [];
+  const lanes = [];
+
+  for (const g of groups) {
+    heads.push(
+      `<g class="ln-head" id="fam-${esc(g.id)}">` +
+      `<text class="ln-head-name" x="0" y="${r1(g.headY + 17)}">${esc(g.name)}</text>` +
+      `<text class="ln-head-meta" x="0" y="${r1(g.headY + 32)}">${esc(g.meta)}</text>` +
+      `<line class="ln-head-rule" x1="0" y1="${r1(g.headY + 38)}" x2="${r1(L.width)}" y2="${r1(g.headY + 38)}"/>` +
+      `</g>`
+    );
+
+    for (const id of g.lanes) lanes.push(lane(id, L));
+  }
+
+  return `<svg class="ln-svg" viewBox="0 0 ${L.width} ${L.height}" width="${L.width}" height="${L.height}" role="img"
+     aria-label="Lineage of ${COMPANIES.length} US telecom companies from 1983 to 2026, grouped by the company each one ended up inside.">
+  <g class="ln-grid-layer">${grid.join('')}
+    <line class="ln-axis-rule" x1="${r1(xStart)}" y1="0" x2="${r1(xStart)}" y2="${L.height}"/>
+  </g>
+  <line class="ln-cursor" x1="0" y1="0" x2="0" y2="${L.height}" style="display:none"/>
+  <g class="ln-heads">${heads.join('')}</g>
+  <g class="ln-lanes">${lanes.join('')}</g>
+</svg>`;
+}
+
+function lane(id, L) {
+  const { X, rows } = L;
+  const c = byId.get(id);
+  const y = rows.get(id);
+  const alive = isAlive(id);
+  const out = mergedInto.get(id);
+  const start = Math.max(c.born, START_YEAR);
+  const stop = endYear(id);
+
+  const parts = [];
+
+  // --- where the thread stops drawing (a merge sweeps out of it early) ---
+  let lineEnd = X(stop);
+  let sweep = null;
+  if (out) {
+    const yTo = rows.get(out.acquirer);
+    if (yTo != null) {
+      const d = reach(yTo - y);
+      lineEnd = Math.max(X(start) + 4, X(stop) - d);
+      sweep = { deal: out, x0: lineEnd, x1: X(stop), yTo };
+    }
+  }
+
+  // --- the thread itself, thickening at every absorption ---
+  const marks = absorptionYears(id).filter((a) => a > start && a < stop);
+  const bps = [start, ...marks, stop];
+  for (let i = 0; i < bps.length - 1; i++) {
+    const x1 = i === bps.length - 2 ? lineEnd : X(bps[i + 1]);
+    const x0 = Math.min(X(bps[i]), x1);
+    parts.push(`<line class="ln-thread" x1="${r1(x0)}" y1="${r1(y)}" x2="${r1(x1)}" y2="${r1(y)}" stroke-width="${widthAt(id, bps[i] + 1e-6)}"/>`);
+  }
+
+  // --- origin ---
+  if (c.spawnedFrom) {
+    const yFrom = L.rows.get(c.spawnedFrom);
+    const near = yFrom != null && Math.abs(yFrom - y) < 260;
+    if (near) {
+      parts.push(`<path class="ln-spawn" d="${flow(X(c.born) - reach(y - yFrom) * 0.7, yFrom, X(c.born), y)}"/>`);
+    } else {
+      parts.push(`<path class="ln-spawn ln-spawn--stub" d="${flow(X(c.born) - 26, y - 16, X(c.born), y)}"/>`);
+    }
+    parts.push(`<path class="ln-origin" d="M${r1(X(c.born))} ${r1(y - 3.6)}l3.6 3.6-3.6 3.6-3.6-3.6z"/>`);
+  } else if (c.born > START_YEAR) {
+    parts.push(`<circle class="ln-origin-dot" cx="${r1(X(c.born))}" cy="${r1(y)}" r="2.6"/>`);
+  }
+
+  // --- renames along the thread ---
+  for (const rn of c.renames || []) {
+    if (rn.year >= stop) continue;
+    parts.push(`<line class="ln-tick" x1="${r1(X(rn.year))}" y1="${r1(y - 5)}" x2="${r1(X(rn.year))}" y2="${r1(y + 5)}"/>`);
+    parts.push(`<text class="ln-rename" x="${r1(X(rn.year) + 5)}" y="${r1(y - 6)}">→ ${esc(rn.name)}</text>`);
+  }
+
+  // --- partial asset sales leaving this thread ---
+  for (const d of assetsOutOf.get(id) || []) {
+    const yTo = L.rows.get(d.acquirer);
+    if (yTo == null) continue;
+    const x1 = X(d.year);
+    const far = Math.abs(yTo - y) > STUB_ABOVE;
+    const yLand = far ? y + Math.sign(yTo - y) * 13 : yTo;
+    const x0 = Math.max(X(start), x1 - (far ? 26 : reach(yTo - y) * 0.8));
+    parts.push(
+      `<g class="ln-mark ln-mark--asset" data-deal="${esc(d.id)}" tabindex="0" role="button" aria-label="${esc(d.title)}, ${yr(d.year)}">` +
+      `<path class="ln-asset-flow" d="${flow(x0, y, x1, yLand)}"/>` +
+      `<rect class="ln-glyph-asset" x="${r1(x1 - 3.2)}" y="${r1(yLand - 3.2)}" width="6.4" height="6.4"/>` +
+      (far ? `<text class="ln-annot" x="${r1(x1 + 7)}" y="${r1(yLand + 3.5)}">→ ${esc(nameAt(d.acquirer, d.year))}</text>` : '') +
+      `</g>`
+    );
+  }
+
+  // --- blocked deals: the thread reaches for another and snaps back ---
+  for (const d of eventsOn.get(id) || []) {
+    const x = X(d.year);
+    if (d.type === 'failed') {
+      const yTo = L.rows.get(d.acquirer);
+      const dir = yTo == null ? -1 : Math.sign(yTo - y) || -1;
+      const yMid = y + dir * 13;
+      parts.push(
+        `<g class="ln-mark ln-mark--failed" data-deal="${esc(d.id)}" tabindex="0" role="button" aria-label="Blocked: ${esc(d.title)}, ${yr(d.year)}">` +
+        `<path class="ln-failed-flow" d="${flow(x - 26, y, x, yMid)}"/>` +
+        `<path class="ln-glyph-x" d="M${r1(x - 4)} ${r1(yMid - 4)}l8 8M${r1(x + 4)} ${r1(yMid - 4)}l-8 8"/>` +
+        `</g>`
+      );
+    } else {
+      parts.push(
+        `<g class="ln-mark ln-mark--external" data-deal="${esc(d.id)}" tabindex="0" role="button" aria-label="${esc(d.title)}, ${yr(d.year)}">` +
+        `<circle class="ln-glyph-ext" cx="${r1(x)}" cy="${r1(y)}" r="4.4"/>` +
+        `</g>`
+      );
+    }
+  }
+
+  // --- pending: a dashed branch that has not closed ---
+  const pend = pendingInto.get(id);
+  if (pend) {
+    const yTo = L.rows.get(pend.acquirer);
+    if (yTo != null) {
+      const x1 = X(pend.year);
+      parts.push(
+        `<g class="ln-mark ln-mark--pending" data-deal="${esc(pend.id)}" tabindex="0" role="button" aria-label="Pending: ${esc(pend.title)}">` +
+        `<path class="ln-pending-flow" d="${flow(x1 - reach(yTo - y) * 0.8, y, x1, yTo)}"/>` +
+        `<circle class="ln-glyph-pending" cx="${r1(x1)}" cy="${r1(yTo)}" r="4"/>` +
+        `</g>`
+      );
+    }
+  }
+
+  // --- the merge that ends this thread ---
+  if (sweep) {
+    const d = sweep.deal;
+    parts.push(
+      `<g class="ln-mark ln-mark--merge" data-deal="${esc(d.id)}" tabindex="0" role="button" aria-label="${esc(d.title)}, ${yr(d.year)}, ${money(d.valueB)}">` +
+      `<path class="ln-merge-flow" d="${flow(sweep.x0, y, sweep.x1, sweep.yTo)}"/>` +
+      `<circle class="ln-glyph-merge" cx="${r1(sweep.x1)}" cy="${r1(sweep.yTo)}" r="${r1(dotR(d.valueB))}"/>` +
+      `</g>`
+    );
+  }
+
+  // --- the Bell System shatters ---
+  if (id === 'bellsystem') {
+    const x = X(BREAKUP_YEAR);
+    const kids = spawnsOf.get('bellsystem') || [];
+    kids.forEach((_, i) => {
+      const spread = 10 + i * 5.5;
+      parts.push(`<path class="ln-shatter" d="${flow(x, y, x + 30 + i * 3, y + spread)}"/>`);
     });
-  }
-  homes.set('bellsystem', { angle: SECTORS.wireline.angle * DEG, radius: 0 }); // the monopoly sits on the axis
-}
-
-// ---- event index ----------------------------------------------------------
-const endOf = new Map();      // companyId -> {year, deal} thread termination
-const absorptionsOf = new Map(); // companyId -> [{year, valueB}] (thickens thread)
-for (const d of DEALS) {
-  if (d.type === 'merge') {
-    endOf.set(d.target, { year: d.year, deal: d });
-    (absorptionsOf.get(d.acquirer) || absorptionsOf.set(d.acquirer, []).get(d.acquirer)).push(d);
-  }
-  if (d.type === 'split' && d.target) endOf.set(d.target, { year: d.year, deal: d });
-}
-
-function companyEnd(id) {
-  const e = endOf.get(id);
-  return e ? e.year : END_YEAR;
-}
-
-// ---- position field -------------------------------------------------------
-// pos(id, year): where company id's thread is at a given year, in xy.
-// Handles spawn-in easing (from parent) and merge-out easing (to acquirer).
-const EASE_IN = 1.5;   // years to drift out from parent after a spawn
-const EASE_OUT = 1.7;  // years to converge into the acquirer before a merge
-const smooth = (t) => t * t * (3 - 2 * t); // smoothstep
-
-function homeXY(id, year) {
-  const h = homes.get(id);
-  const p = hash(id) * Math.PI * 2;
-  const wob = h.radius === 0 ? 0 : 1.1;
-  const x = Math.cos(h.angle) * h.radius + Math.sin(year * 0.55 + p * 6) * wob;
-  const y = Math.sin(h.angle) * h.radius + Math.cos(year * 0.42 + p * 4) * wob;
-  return new THREE.Vector2(x, y);
-}
-
-export function pos(id, year, depth = 0) {
-  const c = byId.get(id);
-  const base = homeXY(id, year);
-  if (!c || depth > 4) return base;
-
-  // spawn-in: emerge from the parent's position
-  if (c.spawnedFrom && year < c.born + EASE_IN) {
-    const from = pos(c.spawnedFrom, c.born, depth + 1);
-    const t = smooth(Math.max(0, (year - c.born) / EASE_IN));
-    return from.clone().lerp(base, t);
-  }
-  // merge-out: converge into the acquirer
-  const end = endOf.get(id);
-  if (end && end.deal.type === 'merge' && year > end.year - EASE_OUT) {
-    const to = pos(end.deal.acquirer, end.year, depth + 1);
-    const t = smooth(Math.min(1, (year - (end.year - EASE_OUT)) / EASE_OUT));
-    return base.clone().lerp(to, t);
-  }
-  return base;
-}
-
-// ---- thread radii ---------------------------------------------------------
-export function radiusAt(id, year) {
-  const c = byId.get(id);
-  let r = 0.34 + (c.weight || 1) * 0.17;
-  const abs = absorptionsOf.get(id) || [];
-  for (const d of abs) if (d.year <= year) r += 0.1 + Math.log10(1 + (d.valueB || 1)) * 0.13;
-  return r;
-}
-
-// ---- public build ---------------------------------------------------------
-const STEP = 0.2; // years per sample
-
-export function buildLineage() {
-  const threads = [];
-  const tributaries = [];
-  const nodes = [];
-  const labels = [];
-
-  for (const c of COMPANIES) {
-    const start = Math.max(c.born, START_YEAR);
-    const end = companyEnd(c.id);
-    const points = [];
-    const radii = [];
-    for (let y = start; y <= end + 1e-6; y += STEP) {
-      const yr = Math.min(y, end);
-      const p = pos(c.id, yr);
-      points.push(new THREE.Vector3(p.x, p.y, yearToZ(yr)));
-      radii.push(radiusAt(c.id, yr));
-    }
-    // ensure the exact endpoint is present
-    const pEnd = pos(c.id, end);
-    const last = points[points.length - 1];
-    if (Math.abs(last.z - yearToZ(end)) > 0.01) {
-      points.push(new THREE.Vector3(pEnd.x, pEnd.y, yearToZ(end)));
-      radii.push(radiusAt(c.id, end));
-    }
-    const sector = SECTORS[c.sector];
-    threads.push({ company: c, points, radii, sector, active: !endOf.has(c.id) });
-
-    // labels: birth + renames (staggered along z by a per-company hash so
-    // companies born the same year don't stack their labels)
-    const labelYear = Math.min(start + EASE_IN + 0.4 + hash(c.id) * 3.2, end);
-    const lp = pos(c.id, labelYear);
-    labels.push({ year: start, name: c.name, companyId: c.id, sector: c.sector, major: (c.weight || 1) >= 2,
-      position: new THREE.Vector3(lp.x, lp.y, yearToZ(labelYear)) });
-    for (const r of c.renames || []) {
-      if (r.year > end) continue;
-      const rp = pos(c.id, r.year + 0.4);
-      labels.push({ year: r.year, name: r.name, companyId: c.id, sector: c.sector, major: true, rename: true,
-        position: new THREE.Vector3(rp.x, rp.y, yearToZ(Math.min(r.year + 0.4, end))) });
-    }
+    parts.push(`<circle class="ln-glyph-split" cx="${r1(x)}" cy="${r1(y)}" r="5.5"/>`);
+    parts.push(`<text class="ln-annot" x="${r1(x + 12)}" y="${r1(y - 9)}">1984: shatters into AT&amp;T Corp. and seven Baby Bells — every thread below</text>`);
   }
 
-  for (const d of DEALS) {
-    if (d.hideNode) continue;
-    const kind = d.type;
-    let position;
+  // --- names ---
+  const gutter = shortOf(id);
+  const label = alive
+    ? `<text class="ln-end-name" x="${r1(X(END_YEAR) + 10)}" y="${r1(y + 4)}">${esc(finalName(id))}</text>`
+    : '';
 
-    if (kind === 'merge') {
-      const p = pos(d.acquirer, d.year);
-      position = new THREE.Vector3(p.x, p.y, yearToZ(d.year));
-    } else if (kind === 'split') {
-      const src = d.target || d.spawn;
-      const p = d.target ? pos(d.target, d.year) : pos(byId.get(d.spawn).spawnedFrom, d.year);
-      position = new THREE.Vector3(p.x, p.y, yearToZ(d.year));
-      void src;
-    } else if (kind === 'asset') {
-      // tributary: seller -> acquirer
-      const from = pos(d.target, d.year - 1.2);
-      const to = pos(d.acquirer, d.year);
-      const pts = [];
-      const N = 14;
-      for (let i = 0; i <= N; i++) {
-        const t = i / N;
-        const yr = d.year - 1.2 + 1.2 * t;
-        const xy = from.clone().lerp(to, smooth(t));
-        pts.push(new THREE.Vector3(xy.x, xy.y, yearToZ(yr)));
-      }
-      tributaries.push({ deal: d, points: pts, sector: SECTORS[byId.get(d.target).sector], kind: 'asset' });
-      position = pts[pts.length - 1];
-    } else if (kind === 'failed') {
-      // approach then snap back
-      const from = pos(d.target, d.year - 1.1);
-      const to = pos(d.acquirer, d.year);
-      const back = pos(d.target, d.year + 0.9);
-      const pts = [];
-      const N = 20;
-      for (let i = 0; i <= N; i++) {
-        const t = i / N;
-        const yr = d.year - 1.1 + 2.0 * t;
-        const reach = t < 0.55 ? smooth(t / 0.55) * 0.72 : smooth(1 - (t - 0.55) / 0.45) * 0.72;
-        const basePt = t < 0.55 ? from : back;
-        const xy = basePt.clone().lerp(to, reach);
-        pts.push(new THREE.Vector3(xy.x, xy.y, yearToZ(yr)));
-      }
-      tributaries.push({ deal: d, points: pts, kind: 'failed' });
-      const apex = from.clone().lerp(to, 0.72);
-      position = new THREE.Vector3(apex.x, apex.y, yearToZ(d.year));
-    } else if (kind === 'pending') {
-      const from = pos(d.target, END_YEAR);
-      const to = pos(d.acquirer, END_YEAR);
-      const pts = [];
-      const N = 12;
-      const z0 = yearToZ(d.year - 1.0), z1 = yearToZ(Math.min(d.year + 0.6, END_YEAR + 0.4));
-      for (let i = 0; i <= N; i++) {
-        const t = i / N;
-        const xy = from.clone().lerp(to, smooth(t));
-        pts.push(new THREE.Vector3(xy.x, xy.y, z0 + (z1 - z0) * t));
-      }
-      tributaries.push({ deal: d, points: pts, kind: 'pending' });
-      position = pts[Math.floor(N / 2)];
-    } else { // external
-      const p = pos(d.target, d.year);
-      position = new THREE.Vector3(p.x, p.y, yearToZ(d.year));
-    }
+  const fam = familyOf.get(id);
+  const fate = out
+    ? `Absorbed by ${nameAt(out.acquirer, out.year)} in ${yr(out.year)}`
+    : id === 'bellsystem' ? 'Broken up in 1984'
+    : 'Still an independent company';
 
-    const v = d.valueB || 0;
-    nodes.push({ deal: d, position, kind,
-      radius: (kind === 'split' ? 2.6 : 0.55) + Math.log10(1 + v) * 0.85 });
-  }
-
-  // year gates every 5 years
-  const yearGates = [];
-  for (let y = 1985; y <= 2025; y += 5) yearGates.push({ year: y, z: yearToZ(y) });
-
-  return { threads, tributaries, nodes, labels, yearGates };
+  return (
+    `<g class="ln-lane" data-company="${esc(id)}" data-sector="${esc(c.sector)}" data-alive="${alive ? '1' : '0'}"` +
+    ` data-search="${esc((c.name + ' ' + (c.renames || []).map((r) => r.name).join(' ') + ' ' + (fam ? fam.name : '')).toLowerCase())}">` +
+    `<rect class="ln-hit" x="0" y="${r1(y - ROW / 2)}" width="${L.width}" height="${ROW}"/>` +
+    `<text class="ln-name" x="${GUTTER - 12}" y="${r1(y + 4)}">${esc(gutter)}</text>` +
+    parts.join('') + label +
+    `<title>${esc(c.name)} — ${esc(fate)}</title>` +
+    `</g>`
+  );
 }
+
+// ---- the sticky year rail -------------------------------------------------
+
+export function axisTicks() {
+  const L = layout;
+  if (!L) return [];
+  const ticks = [];
+  for (let year = 1985; year <= 2025; year += 5) ticks.push({ year, x: L.X(year) });
+  ticks.unshift({ year: START_YEAR, x: L.X(START_YEAR), edge: true });
+  ticks.push({ year: 2026, x: L.X(END_YEAR), edge: true });
+  return ticks;
+}
+
+/** Year under a given x, or null outside the plot. */
+export function yearAt(x) {
+  const L = layout;
+  if (!L) return null;
+  const t = (x - L.X(START_YEAR)) / L.plotW;
+  if (t < -0.02 || t > 1.02) return null;
+  return START_YEAR + Math.min(1, Math.max(0, t)) * SPAN;
+}
+
+export { GUTTER };

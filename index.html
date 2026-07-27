@@ -3,39 +3,190 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Consolidation — 40 Years of Telecom Mergers</title>
-  <meta name="description" content="A 3D scroll-driven visualization of four decades of US telecom mergers — from the 1984 Bell System breakup to today's three giants. 60+ companies, $1T+ in deals." />
+  <title>The Consolidation — 40 years of US telecom mergers</title>
+  <meta name="description" content="Sixty-six US telecom companies, seventy-six deals, 1983–2026. A readable lineage chart showing exactly which company each one ended up inside." />
   <meta property="og:title" content="The Consolidation" />
-  <meta property="og:description" content="Forty years of American telecom mergers, visualized as a 3D river of light." />
+  <meta property="og:description" content="Forty years of American telecom mergers, drawn as one chart: every company, and the company it ended up inside." />
   <meta property="og:type" content="website" />
-  <meta name="theme-color" content="#050510" />
+  <meta name="theme-color" content="#f9f9f7" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☎️</text></svg>" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "./vendor/three/three.module.js",
-      "three/addons/": "./vendor/three/addons/"
-    }
-  }
+  <script>
+    // Set the theme before first paint so there is no flash.
+    (function () {
+      try {
+        var t = localStorage.getItem('theme');
+        if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+      } catch (e) { /* private mode — fall back to the OS setting */ }
+    })();
   </script>
 </head>
 <body>
-  <header id="masthead">
-    <span class="mark">THE CONSOLIDATION</span>
-    <span class="range">1984 — 2026</span>
+  <a class="skip" href="#lineage">Skip to the lineage chart</a>
+
+  <header class="nav">
+    <a class="nav-mark" href="#top">The Consolidation<span class="nav-range">1983–2026</span></a>
+    <nav class="nav-links" aria-label="Sections">
+      <a href="#curve">The curve</a>
+      <a href="#eras">Eras</a>
+      <a href="#lineage">Lineage</a>
+      <a href="#trunks">Survivors</a>
+      <a href="#ledger">Every deal</a>
+    </nav>
+    <button class="theme-toggle" type="button" aria-label="Switch between light and dark theme">
+      <span class="theme-toggle-icon" aria-hidden="true"></span>
+    </button>
   </header>
 
-  <div id="track"></div>
+  <main id="top">
+    <section class="hero">
+      <p class="kicker">United States telecommunications · 1983 to 2026</p>
+      <h1>One company was broken into eight. Forty years later, the pieces had put themselves back into three.</h1>
+      <p class="standfirst">
+        In 1984 the Bell System was split apart to create competition. Competition's answer was to
+        merge — <strong>76 transactions</strong> over four decades, worth more than a trillion dollars.
+        This page tracks 66 companies and shows, for each one, exactly which company it ended up inside.
+      </p>
+      <ul class="stats" id="stats"></ul>
+    </section>
+
+    <section id="curve" class="section">
+      <div class="section-head">
+        <h2>The consolidation curve</h2>
+        <p class="section-intro">
+          How many of the 66 tracked companies were still independent in each year. The 1996 Telecom Act
+          opened the market and the count climbed — then the mergers caught up with it.
+        </p>
+      </div>
+      <figure class="card">
+        <div class="chart-holder" id="curve-holder"></div>
+        <figcaption>
+          Count of tracked companies alive and unacquired, quarterly, 1983–2026. A company leaves the
+          count on the day its acquisition closes.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section id="eras" class="section">
+      <div class="section-head">
+        <h2>Six eras</h2>
+        <p class="section-intro">The shape of the curve, in words.</p>
+      </div>
+      <ol class="eras" id="eras-list"></ol>
+    </section>
+
+    <section id="lineage" class="section section--wide">
+      <div class="section-head">
+        <h2>Where all 66 companies ended up</h2>
+        <p class="section-intro">
+          Every company is one horizontal thread, named on the left. Time runs left to right. When a
+          company was bought, its thread sweeps into the thread that bought it and stops there — so
+          each block below is one surviving company and everything now inside it. Threads still
+          independent today run all the way to the right edge and are
+          <strong class="ink-alive">drawn in blue</strong>; everything absorbed is grey.
+        </p>
+      </div>
+
+      <div class="controls" role="group" aria-label="Lineage chart controls">
+        <div class="control control--search">
+          <label for="ln-search">Find a company</label>
+          <input type="search" id="ln-search" placeholder="Nextel, Qwest, Adelphia…" autocomplete="off" />
+        </div>
+        <div class="control">
+          <span class="control-label" id="sector-label">Highlight a sector</span>
+          <div class="chips" id="sector-chips" role="group" aria-labelledby="sector-label"></div>
+        </div>
+        <div class="control control--jump">
+          <label for="ln-jump">Jump to</label>
+          <select id="ln-jump"></select>
+        </div>
+      </div>
+
+      <ul class="legend" id="ln-legend"></ul>
+
+      <div class="lineage-frame">
+        <div class="lineage-rail" id="ln-rail" aria-hidden="true"></div>
+        <div class="lineage-scroll" id="ln-scroll">
+          <div class="lineage-axis" id="ln-axis-static" aria-hidden="true"></div>
+          <div class="lineage-body" id="ln-body"></div>
+        </div>
+      </div>
+      <p class="chart-foot" id="ln-count"></p>
+    </section>
+
+    <section id="trunks" class="section">
+      <div class="section-head">
+        <h2>What each survivor swallowed</h2>
+        <p class="section-intro">
+          Total announced value of the closed acquisitions made by each surviving trunk and by everything
+          inside it — so AT&amp;T's bar includes the deals SBC, Cingular and AT&amp;T Corp. did before they
+          became one company.
+        </p>
+      </div>
+      <figure class="card">
+        <div id="trunk-bars"></div>
+        <figcaption>
+          Nominal announced values, not inflation-adjusted, summed across four decades. Pending deals
+          (Charter–Cox, Charter–Liberty Broadband) are excluded.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section id="ledger" class="section">
+      <div class="section-head">
+        <h2>Every deal</h2>
+        <p class="section-intro">All 76 transactions. Select a row to read what happened.</p>
+      </div>
+
+      <div class="controls" role="group" aria-label="Deal filters">
+        <div class="control control--search">
+          <label for="dl-search">Search deals</label>
+          <input type="search" id="dl-search" placeholder="spectrum, bankruptcy, Baby Bell…" autocomplete="off" />
+        </div>
+        <div class="control">
+          <label for="dl-type">Outcome</label>
+          <select id="dl-type">
+            <option value="all">All outcomes</option>
+            <option value="closed">Closed</option>
+            <option value="failed">Blocked or abandoned</option>
+            <option value="pending">Pending</option>
+          </select>
+        </div>
+        <div class="control">
+          <label for="dl-sector">Sector</label>
+          <select id="dl-sector"><option value="all">All sectors</option></select>
+        </div>
+        <div class="control">
+          <label for="dl-sort">Sort</label>
+          <select id="dl-sort">
+            <option value="year">Oldest first</option>
+            <option value="year-desc">Newest first</option>
+            <option value="value">Largest first</option>
+          </select>
+        </div>
+      </div>
+
+      <p class="ledger-count" id="dl-count" role="status"></p>
+      <ol class="ledger" id="dl-rows"></ol>
+    </section>
+
+    <footer class="foot">
+      <h2>About the data</h2>
+      <p id="foot-note"></p>
+      <p>
+        Values are announced transaction values in nominal dollars, including assumed debt where that
+        was the headline figure. A dash means the deal was a stock swap, a joint venture, or otherwise
+        had no meaningful headline price. The set is curated rather than exhaustive: it covers the deals
+        that moved the industry's structure, not every transaction ever filed.
+      </p>
+    </footer>
+  </main>
+
+  <div class="tip" id="tip" role="status" aria-live="polite" hidden></div>
 
   <noscript>
-    <div class="noscript-msg">
-      <h1>The Consolidation</h1>
-      <p>This visualization of 40 years of telecom mergers requires JavaScript.</p>
-    </div>
+    <p class="noscript">This page draws its charts from a dataset in the browser, so it needs JavaScript enabled.</p>
   </noscript>
 
   <script type="module" src="js/main.js"></script>
