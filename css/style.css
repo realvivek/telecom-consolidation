@@ -1,0 +1,338 @@
+/* The Consolidation — styles. Deliberately dark: this is a night scene. */
+
+:root {
+  color-scheme: dark;
+  --bg: #050510;
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --ink-3: #898781;
+  --hairline: rgba(255, 255, 255, 0.1);
+  --accent: #c98500;       /* validated wireline gold — the story's protagonist */
+  --failed: #d03b3b;
+  --pending: #c3c2b7;
+  --display: 'Space Grotesk', system-ui, sans-serif;
+  --body: 'Inter', system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: auto; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--body);
+  overflow-x: hidden;
+}
+body.exploring { overflow: hidden; }
+
+::selection { background: rgba(201, 133, 0, 0.35); }
+
+/* ---- canvas & label layers ---- */
+#gl {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  opacity: 0;
+  transition: opacity 1.4s ease;
+}
+body.ready #gl { opacity: 1; }
+#labels { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
+
+/* ---- masthead ---- */
+#masthead {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 18px 26px 10px;
+  pointer-events: none;
+  font-family: var(--display);
+  letter-spacing: 0.22em;
+  font-size: 0.72rem;
+  color: var(--ink-2);
+  text-shadow: 0 1px 8px rgba(5, 5, 16, 0.9);
+}
+#masthead .range { color: var(--ink-3); letter-spacing: 0.18em; }
+
+/* ---- HUD: year readout + progress ---- */
+#hud { position: fixed; z-index: 40; inset: 0 0 auto 0; pointer-events: none; }
+#hud-bar {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.08);
+}
+#hud-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #c98500, #d55181);
+}
+#hud-year {
+  position: absolute;
+  top: 46px;
+  left: 26px;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 2.1rem;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  opacity: 0.9;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 2px 14px rgba(5, 5, 16, 0.9);
+}
+
+/* ---- legend ---- */
+#legend {
+  position: fixed;
+  z-index: 40;
+  left: 26px;
+  bottom: 22px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  max-width: 340px;
+  pointer-events: none;
+  background: rgba(5, 5, 16, 0.6);
+  padding: 10px 14px;
+  border-radius: 12px;
+  backdrop-filter: blur(4px);
+}
+#legend .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+  text-shadow: 0 1px 6px rgba(5, 5, 16, 0.9);
+}
+#legend .chip i { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+
+/* ---- scroll track & chapters ---- */
+#track { position: relative; z-index: 3; pointer-events: none; }
+body.exploring #track { visibility: hidden; }
+
+.chapter {
+  position: absolute;
+  left: 7vw;
+  width: min(31rem, 84vw);
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(26px);
+  transition: opacity 0.9s ease, transform 0.9s ease;
+  /* scrim so text stays readable over the brightest parts of the scene */
+  padding: 30px 34px;
+  margin: -30px -34px;
+  background: radial-gradient(ellipse at 50% 45%, rgba(5, 5, 16, 0.82) 35%, rgba(5, 5, 16, 0.55) 62%, transparent 78%);
+  border-radius: 30px;
+}
+.chapter.visible { opacity: 1; transform: translateY(0); }
+.chapter.right { left: auto; right: 7vw; }
+
+.chapter .kicker {
+  font-family: var(--display);
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.34em;
+  color: var(--accent);
+  margin-bottom: 14px;
+}
+.chapter h2 {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: clamp(1.7rem, 4.2vw, 2.7rem);
+  line-height: 1.08;
+  margin: 0 0 18px;
+  text-shadow: 0 2px 24px rgba(5, 5, 16, 0.95);
+}
+.chapter p {
+  font-size: 0.95rem;
+  line-height: 1.65;
+  color: var(--ink-2);
+  margin: 0;
+  text-shadow: 0 1px 10px rgba(5, 5, 16, 0.95);
+}
+.chapter.prologue h2 { font-size: clamp(2.1rem, 5.6vw, 3.6rem); }
+
+.scroll-hint {
+  margin-top: 34px;
+  font-family: var(--display);
+  font-size: 0.72rem;
+  letter-spacing: 0.3em;
+  color: var(--ink-3);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.scroll-hint .arrow { animation: bob 1.8s ease-in-out infinite; font-size: 1rem; }
+@keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(7px); } }
+
+/* ---- epilogue extras ---- */
+.stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin: 30px 0 8px;
+}
+.stat {
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: rgba(10, 10, 26, 0.55);
+  backdrop-filter: blur(6px);
+}
+.stat .v {
+  display: block;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 1.7rem;
+  margin-bottom: 2px;
+}
+.stat .k { font-size: 0.68rem; letter-spacing: 0.08em; color: var(--ink-3); }
+
+.epilogue-actions { margin: 22px 0; }
+.btn {
+  font-family: var(--display);
+  font-size: 0.8rem;
+  letter-spacing: 0.14em;
+  color: var(--ink);
+  background: rgba(201, 133, 0, 0.12);
+  border: 1px solid rgba(201, 133, 0, 0.55);
+  border-radius: 999px;
+  padding: 12px 22px;
+  cursor: pointer;
+  transition: background 0.25s ease, border-color 0.25s ease;
+}
+.btn:hover { background: rgba(201, 133, 0, 0.28); border-color: var(--accent); }
+
+.data-note { font-size: 0.7rem !important; color: var(--ink-3) !important; margin-top: 18px !important; }
+
+#exit-explore { position: fixed; top: 52px; right: 26px; z-index: 60; }
+
+/* ---- 3D scene DOM labels ---- */
+.thread-label {
+  font-family: var(--display);
+  font-size: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  white-space: nowrap;
+  color: var(--c, #fff);
+  text-shadow: 0 1px 6px rgba(5, 5, 16, 0.95), 0 0 14px rgba(5, 5, 16, 0.8);
+  transition: opacity 0.35s ease;
+}
+.thread-label.major { font-size: 0.74rem; font-weight: 700; letter-spacing: 0.18em; }
+.thread-label.rename::before { content: '→ '; opacity: 0.7; }
+.year-label {
+  font-family: var(--display);
+  font-size: 0.66rem;
+  letter-spacing: 0.26em;
+  color: #8a8ab8;
+  opacity: 0.75;
+}
+
+/* ---- deal detail card ---- */
+#deal-card {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 50;
+  width: 350px;
+  max-width: 92vw;
+  background: rgba(10, 10, 26, 0.93);
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+  padding: 20px 22px;
+  backdrop-filter: blur(10px);
+  opacity: 0;
+  transform: translateY(18px);
+  pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+#deal-card.open { opacity: 1; transform: translateY(0); pointer-events: auto; }
+#deal-close {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  background: none;
+  border: none;
+  color: var(--ink-3);
+  font-size: 1.3rem;
+  cursor: pointer;
+  padding: 4px;
+}
+#deal-close:hover { color: var(--ink); }
+.deal-kind {
+  font-family: var(--display);
+  font-size: 0.62rem;
+  letter-spacing: 0.26em;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.deal-kind.failed { color: var(--failed); }
+.deal-kind.pending { color: var(--pending); }
+#deal-card h3 {
+  font-family: var(--display);
+  font-size: 1.15rem;
+  line-height: 1.2;
+  margin: 0 0 8px;
+}
+.deal-parties { font-size: 0.78rem; color: var(--ink-2); margin-bottom: 4px; }
+.deal-value {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 1.5rem;
+  color: var(--accent);
+  margin: 6px 0 10px;
+}
+#deal-card p { font-size: 0.82rem; line-height: 1.55; color: var(--ink-2); margin: 0; }
+
+/* ---- noscript / fallback ---- */
+.noscript-msg, #fallback {
+  position: relative;
+  z-index: 10;
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 80px 24px;
+}
+body.no-webgl #gl, body.no-webgl #labels, body.no-webgl #track, body.no-webgl #hud { display: none; }
+#fallback h1, .noscript-msg h1 { font-family: var(--display); font-size: 2.4rem; margin: 0 0 6px; }
+#fallback .sub { color: var(--ink-2); margin: 0 0 22px; }
+#fallback .note { color: var(--ink-3); font-size: 0.8rem; line-height: 1.6; }
+.deal-list { list-style: none; margin: 26px 0; padding: 0; }
+.deal-list li {
+  display: grid;
+  grid-template-columns: 3.2rem 1fr auto;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 0.86rem;
+  align-items: baseline;
+}
+.deal-list .y { font-family: var(--display); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.deal-list .v { font-family: var(--display); color: var(--accent); white-space: nowrap; }
+.deal-list em.f { color: var(--failed); font-style: normal; font-size: 0.7rem; letter-spacing: 0.08em; }
+.deal-list em.p { color: var(--pending); font-style: normal; font-size: 0.7rem; letter-spacing: 0.08em; }
+
+/* ---- responsive ---- */
+@media (max-width: 700px) {
+  #hud-year { font-size: 1.5rem; top: 40px; left: 18px; }
+  #masthead { padding: 14px 18px 8px; font-size: 0.62rem; letter-spacing: 0.16em; }
+  .chapter, .chapter.right { left: 6vw; right: auto; width: 88vw; }
+  #legend { left: 18px; bottom: 14px; max-width: 78vw; gap: 4px 10px; }
+  #legend .chip { font-size: 0.56rem; }
+  #deal-card { right: 0; bottom: 0; left: 0; width: 100%; max-width: 100%; border-radius: 14px 14px 0 0; }
+  .stats { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat .v { font-size: 1.3rem; }
+  #exit-explore { top: 44px; right: 14px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chapter { transition: opacity 0.6s ease; transform: none; }
+  .scroll-hint .arrow { animation: none; }
+  #gl { transition: none; }
+}

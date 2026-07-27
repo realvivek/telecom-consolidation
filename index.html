@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Consolidation — 40 Years of Telecom Mergers</title>
+  <meta name="description" content="A 3D scroll-driven visualization of four decades of US telecom mergers — from the 1984 Bell System breakup to today's three giants. 60+ companies, $1T+ in deals." />
+  <meta property="og:title" content="The Consolidation" />
+  <meta property="og:description" content="Forty years of American telecom mergers, visualized as a 3D river of light." />
+  <meta property="og:type" content="website" />
+  <meta name="theme-color" content="#050510" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☎️</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./vendor/three/three.module.js",
+      "three/addons/": "./vendor/three/addons/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <header id="masthead">
+    <span class="mark">THE CONSOLIDATION</span>
+    <span class="range">1984 — 2026</span>
+  </header>
+
+  <div id="track"></div>
+
+  <noscript>
+    <div class="noscript-msg">
+      <h1>The Consolidation</h1>
+      <p>This visualization of 40 years of telecom mergers requires JavaScript.</p>
+    </div>
+  </noscript>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
