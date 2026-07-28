@@ -271,15 +271,37 @@ function buildJumpList() {
     scrollTo({ top: target.getBoundingClientRect().top + scrollY - navHeight() - 40, behavior: 'smooth' });
   });
 
-  $('#ln-legend').innerHTML = [
-    ['<line x1="1" y1="7" x2="27" y2="7" stroke="var(--alive)" stroke-width="3" stroke-linecap="round"/>', 'Still independent today'],
-    ['<line x1="1" y1="7" x2="27" y2="7" stroke="var(--dead)" stroke-width="1.6" stroke-linecap="round"/>', 'Absorbed — the thread stops where it was bought'],
-    ['<path d="M1 2C9 2 13 12 20 12" fill="none" stroke="var(--dead)" stroke-width="1.4"/><circle cx="22" cy="12" r="3.6" fill="var(--ink-2)" stroke="var(--surface)" stroke-width="2"/>', 'Merger — dot grows with deal value'],
-    ['<path d="M1 2C9 2 13 12 18 12" fill="none" stroke="var(--dead)" stroke-width="1.1"/><rect x="19" y="8.8" width="6.4" height="6.4" fill="var(--surface)" stroke="var(--ink-2)" stroke-width="1.7"/>', 'Part of the business sold'],
-    ['<path d="M1 11C8 11 11 5 16 5" fill="none" stroke="var(--critical)" stroke-width="1.3"/><path d="M14 3l6 6M20 3l-6 6" stroke="var(--critical)" stroke-width="2" stroke-linecap="round"/>', 'Blocked or abandoned'],
-    ['<path d="M1 2C9 2 13 12 20 12" fill="none" stroke="var(--ink-2)" stroke-width="1.4" stroke-dasharray="5 4"/><circle cx="22" cy="12" r="3.6" fill="var(--surface)" stroke="var(--ink-2)" stroke-width="1.8" stroke-dasharray="3 2.4"/>', 'Announced, not yet closed'],
-    ['<path d="M12 3l4 4-4 4-4-4z" fill="var(--axis)"/><line x1="14" y1="7" x2="27" y2="7" stroke="var(--dead)" stroke-width="1.6"/>', 'Spun out of a parent company'],
-  ].map(([svg, label]) => `<li><svg width="28" height="15" viewBox="0 0 28 15" aria-hidden="true">${svg}</svg>${esc(label)}</li>`).join('');
+  // The key, grouped. Seven items in one wrapping row read as a run-on
+  // sentence; two labelled groups with the glyphs on a shared column read as
+  // something you can scan.
+  const KEY = [
+    ['A thread', false, [
+      ['<line x1="1" y1="7" x2="27" y2="7" stroke="var(--alive)" stroke-width="3" stroke-linecap="round"/>',
+        'Still independent today'],
+      ['<line x1="1" y1="7" x2="27" y2="7" stroke="var(--dead)" stroke-width="1.6" stroke-linecap="round"/>',
+        'Absorbed — it stops where it was bought'],
+    ]],
+    ['What happens along it', true, [
+      ['<path d="M1 2C9 2 13 12 20 12" fill="none" stroke="var(--dead)" stroke-width="1.4"/><circle cx="22" cy="12" r="3.6" fill="var(--ink-2)" stroke="var(--surface)" stroke-width="2"/>',
+        'Merger — the dot grows with deal value'],
+      ['<path d="M1 2C9 2 13 12 18 12" fill="none" stroke="var(--dead)" stroke-width="1.1"/><rect x="19" y="8.8" width="6.4" height="6.4" fill="var(--surface)" stroke="var(--ink-2)" stroke-width="1.7"/>',
+        'Part of the business sold'],
+      ['<path d="M1 11C8 11 11 5 16 5" fill="none" stroke="var(--critical)" stroke-width="1.3"/><path d="M14 3l6 6M20 3l-6 6" stroke="var(--critical)" stroke-width="2" stroke-linecap="round"/>',
+        'Blocked or abandoned'],
+      ['<path d="M1 2C9 2 13 12 20 12" fill="none" stroke="var(--ink-2)" stroke-width="1.4" stroke-dasharray="5 4"/><circle cx="22" cy="12" r="3.6" fill="var(--surface)" stroke="var(--ink-2)" stroke-width="1.8" stroke-dasharray="3 2.4"/>',
+        'Announced, not yet closed'],
+      ['<path d="M12 3l4 4-4 4-4-4z" fill="var(--axis)"/><line x1="14" y1="7" x2="27" y2="7" stroke="var(--dead)" stroke-width="1.6"/>',
+        'Spun out of a parent company'],
+    ]],
+  ];
+  $('#ln-legend').innerHTML = KEY.map(([title, wide, items]) => `
+    <section class="key-group${wide ? ' key-group--wide' : ''}">
+      <h3 class="key-title">${esc(title)}</h3>
+      <ul class="key-list">${items.map(([glyph, label]) => `<li>
+        <span class="key-glyph"><svg width="28" height="15" viewBox="0 0 28 15" aria-hidden="true">${glyph}</svg></span>
+        <span>${esc(label)}</span>
+      </li>`).join('')}</ul>
+    </section>`).join('');
 })();
 
 // ----------------------------------------------------------------- ledger --
