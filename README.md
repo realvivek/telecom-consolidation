@@ -38,14 +38,14 @@ a floor. Click any building to walk up to it and read its storeys by name.
 
 The architecture is borrowed from Chicago — Sears Tower setbacks, a tapered Hancock
 tube, Aon's limestone slab, Board of Trade deco, Tribune Gothic pinnacles, Wrigley
-terracotta, Marina City cylinders, Monadnock brick, Mies glass boxes. The city sits
-on a paved plaza in open country under a low afternoon sun, with four ridges of
-hills for depth and Lake Michigan on one side — the water is a standard material
-with wave motion injected into it, so it takes the scene's own sun and fog, and a
-grazing-angle sky reflection is what makes it read as water rather than as a blue
-plane. Volumes are flat and matte, shaded by height rather than
-textured: a window grid at this scale was sub-pixel speckle, whereas a value
-gradient is what gives a massed form depth.
+terracotta, Marina City cylinders, Monadnock brick, Mies glass boxes. The city sits on a paved plaza inside a
+wider low-rise city that fades into haze, under a low afternoon sun with four
+ridges of hills behind it. Nothing in the surrounding fabric is labelled, so the
+data buildings stay the heroes while the skyline stops ending in mid-air.
+
+Volumes are flat and matte, shaded by height rather than textured: a window grid
+at this scale was sub-pixel speckle, whereas a value gradient is what gives a
+massed form depth. Every edge is chamfered, so the sun catches along each arris.
 
 None of the styling means anything: massing, façade and crown are decoration, and
 only storey height is data. Height is linear in deal value with a minimum so the
@@ -69,12 +69,20 @@ No build step, no bundler, no CDN — a static page of ES modules.
   all-pairs gates, and identity here is carried by the name in the gutter anyway.
 - **Story mode**: [three.js](https://threejs.org), vendored locally and loaded
   through an import map. A daylit scene: gradient sky dome, a low sun with soft
-  shadow mapping and layered glare sprites, drifting clouds, and three
-  procedurally generated horizon ridges painted with aerial perspective and left
-  open on the lake side. Each building's massing comes from a style
-  `profile(fraction) → width` function, which is what produces the setbacks and
-  tapers; storeys are flat matte volumes tinted by height. Trees are clustered
-  instanced canopies. `CSS2DRenderer` gives crisp DOM labels, with a
+  shadow mapping and layered glare sprites, drifting clouds, and four
+  procedurally generated horizon ridges painted with aerial perspective. Each
+  building's massing comes from a style `profile(fraction) → width` function,
+  which is what produces the setbacks and tapers; storeys are chamfered, flat
+  matte volumes tinted by height. Trees are clustered instanced canopies.
+- **Rendering**: the scene draws into a linear half-float target carrying its own
+  depth texture, and a single resolve pass reads colour and depth together to
+  apply screen-space ambient occlusion, exposure, ACES tone mapping and the
+  transfer function. Sixteen golden-angle samples per pixel with a per-pixel
+  rotation; normals are reconstructed from the nearer neighbour on each axis so
+  silhouettes do not smear. Contact shadows sit under every volume as well —
+  shadow maps give you the sun, occlusion gives you the corners. The canvas is
+  supersampled rather than multisampled, since a resolve pass means MSAA never
+  reaches it. `CSS2DRenderer` gives crisp DOM labels, with a
   screen-space declutter pass that drops any label which would overprint a nearer
   one or land on the interface. Loaded lazily — the module is only fetched when
   someone opens it.

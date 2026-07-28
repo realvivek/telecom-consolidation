@@ -45,13 +45,6 @@ const MONUMENT_Z = -27.5;   // behind the plaza, so the empty 1983 city still ha
 const RISE_YEARS = 0.55;     // how long a storey takes to slide into place
 
 const TAU = Math.PI * 2;
-/** What surrounds the city. Swap live with ?surround=fabric|mall|fields|open */
-const SURROUND = (() => {
-  try {
-    const v = new URLSearchParams(location.search).get('surround');
-    return ['fabric', 'mall', 'fields', 'open'].includes(v) ? v : 'fabric';
-  } catch (e) { return 'fabric'; }
-})();
 /** Deterministic 0..1 — the surroundings must look the same on every visit. */
 const noise = (i) => {
   const x = Math.sin(i * 127.1 + 311.7) * 43758.5453;
@@ -73,8 +66,8 @@ const RIDGES = [
   { radius: 232, min: 5, max: 15, seed: 6.4, peak: '#7d8a9e', haze: '#f1e4cf' },
 ];
 
-// The city sits on a paved plaza in open country; what lies beyond the plaza is
-// chosen by SURROUND above.
+// The city sits on a paved plaza, inside a wider low-rise city that fades into
+// haze.
 const COLOR = {
   land: 0x9db07f,       // open country around the city
   plaza: 0xdbcaa6,      // the paved ground the blocks sit on
@@ -154,6 +147,38 @@ const STYLES = {
 // The tallest buildings get the styles that were invented for tall buildings.
 const TALL_ORDER = ['bundle', 'taper', 'limestone', 'deco', 'gothic', 'terracotta', 'glassbox', 'round'];
 const LOW_ORDER = ['masonry', 'round', 'terracotta', 'glassbox', 'gothic', 'deco'];
+
+/** A unit cube with chamfered edges and slightly rounded vertical corners.
+ *  Hard 90-degree edges are the giveaway that something was thrown together —
+ *  a chamfer a few centimetres wide catches the sun along every arris and is
+ *  most of the difference between "boxes" and "buildings". */
+function chamferedBox(bevel = 0.028, radius = 0.05, curve = 3) {
+  const hw = 0.5 - bevel;
+  const r = Math.min(radius, hw * 0.9);
+  const shape = new THREE.Shape();
+  shape.moveTo(-hw + r, -hw);
+  shape.lineTo(hw - r, -hw);
+  shape.quadraticCurveTo(hw, -hw, hw, -hw + r);
+  shape.lineTo(hw, hw - r);
+  shape.quadraticCurveTo(hw, hw, hw - r, hw);
+  shape.lineTo(-hw + r, hw);
+  shape.quadraticCurveTo(-hw, hw, -hw, hw - r);
+  shape.lineTo(-hw, -hw + r);
+  shape.quadraticCurveTo(-hw, -hw, -hw + r, -hw);
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: 1 - bevel * 2,
+    bevelEnabled: true,
+    bevelThickness: bevel,
+    bevelSize: bevel,
+    bevelSegments: 2,
+    curveSegments: curve,
+  });
+  geo.rotateX(-Math.PI / 2);
+  geo.center();
+  geo.computeVertexNormals();
+  geo.deleteAttribute('uv');
+  return geo;
+}
 
 /** Footprint in x and z for a given style at a given width. */
 function planDims(style, w) {
@@ -311,6 +336,111 @@ function loopPoint(s, h, out) {
   return out;
 }
 
+// ------------------------------------------------------------------- AO ----
+// Screen-space ambient occlusion off the depth buffer. Shadow maps give you the
+// sun; this gives you the darkening where surfaces meet — inside setbacks, where
+// a building lands on its plinth, along a street. It is the difference between
+// a scene that is lit and a scene that is modelled.
+const AO_SAMPLES = 16;
+const RESOLVE_SHADER = {
+  uniforms: {
+    tColor: { value: null },
+    tDepth: { value: null },
+    uExposure: { value: 1.14 },
+    uProjInv: { value: new THREE.Matrix4() },
+    uResolution: { value: new THREE.Vector2() },
+    uProjScale: { value: 1 },
+    uRadius: { value: 0.85 },
+    uIntensity: { value: 0.72 },
+    uBias: { value: 0.09 },
+    uTint: { value: new THREE.Color(0x4a3a26) },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+  `,
+  fragmentShader: `
+    uniform sampler2D tColor;
+    uniform sampler2D tDepth;
+    uniform float uExposure;
+    uniform mat4 uProjInv;
+    uniform vec2 uResolution;
+    uniform float uProjScale;
+    uniform float uRadius;
+    uniform float uIntensity;
+    uniform float uBias;
+    uniform vec3 uTint;
+    varying vec2 vUv;
+
+    // The scene is rendered to a linear target, so this pass owns exposure,
+    // tone mapping and the transfer function as well as the occlusion.
+    vec3 aces(vec3 c) {
+      const mat3 IN = mat3(0.59719, 0.07600, 0.02840, 0.35458, 0.90834, 0.13383, 0.04823, 0.01566, 0.83777);
+      const mat3 OUT = mat3(1.60475, -0.10208, -0.00327, -0.53108, 1.10813, -0.07276, -0.07367, -0.00605, 1.07602);
+      c = IN * c;
+      vec3 a = c * (c + 0.0245786) - 0.000090537;
+      vec3 b = c * (0.983729 * c + 0.432951) + 0.238081;
+      return clamp(OUT * (a / b), 0.0, 1.0);
+    }
+    vec3 toSRGB(vec3 c) {
+      return mix(pow(c, vec3(0.4166667)) * 1.055 - 0.055, c * 12.92, step(c, vec3(0.0031308)));
+    }
+
+    vec3 viewPos(vec2 uv, float d) {
+      vec4 ndc = vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+      vec4 v = uProjInv * ndc;
+      return v.xyz / v.w;
+    }
+
+    void main() {
+      vec4 base = texture2D(tColor, vUv);
+      float d = texture2D(tDepth, vUv).x;
+      if (d >= 0.9999) {                                  // sky: no occlusion
+        gl_FragColor = vec4(toSRGB(aces(base.rgb * uExposure)), 1.0);
+        return;
+      }
+
+      vec2 texel = 1.0 / uResolution;
+      vec3 P = viewPos(vUv, d);
+
+      // Normal from neighbouring depth, picking the nearer side of each axis so
+      // silhouette edges do not smear the basis.
+      float dxr = texture2D(tDepth, vUv + vec2(texel.x, 0.0)).x;
+      float dxl = texture2D(tDepth, vUv - vec2(texel.x, 0.0)).x;
+      float dyu = texture2D(tDepth, vUv + vec2(0.0, texel.y)).x;
+      float dyd = texture2D(tDepth, vUv - vec2(0.0, texel.y)).x;
+      vec3 ddx = abs(dxr - d) < abs(dxl - d)
+        ? viewPos(vUv + vec2(texel.x, 0.0), dxr) - P
+        : P - viewPos(vUv - vec2(texel.x, 0.0), dxl);
+      vec3 ddy = abs(dyu - d) < abs(dyd - d)
+        ? viewPos(vUv + vec2(0.0, texel.y), dyu) - P
+        : P - viewPos(vUv - vec2(0.0, texel.y), dyd);
+      vec3 N = normalize(cross(ddx, ddy));
+
+      // Ring samples, rotated per pixel so the pattern never bands.
+      float ang = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) * 6.2831853;
+      float px = uRadius * uProjScale / max(-P.z, 0.001);
+      float occ = 0.0;
+      for (int i = 0; i < ${AO_SAMPLES}; i++) {
+        float fi = float(i);
+        float a = ang + fi * 2.3999632;                    // golden angle
+        float rr = px * (0.28 + 0.72 * sqrt((fi + 0.5) / float(${AO_SAMPLES})));
+        vec2 uv2 = vUv + vec2(cos(a), sin(a)) * rr * texel;
+        float d2 = texture2D(tDepth, uv2).x;
+        if (d2 >= 0.9999) continue;
+        vec3 diff = viewPos(uv2, d2) - P;
+        float dist = length(diff);
+        if (dist < 1e-4) continue;
+        float fall = smoothstep(uRadius * 1.25, uRadius * 0.2, dist);
+        occ += max(0.0, dot(diff / dist, N) - uBias) * fall;
+      }
+      float ao = clamp(1.0 - (occ / float(${AO_SAMPLES})) * uIntensity * 3.4, 0.0, 1.0);
+      base.rgb *= mix(uTint, vec3(1.0), 0.5 + 0.5 * ao);
+      gl_FragColor = vec4(toSRGB(aces(base.rgb * uExposure)), 1.0);
+    }
+  `,
+};
+
 // ================================================================== engine ==
 export function createStory(root) {
   const stage = root.querySelector('#story-stage');
@@ -326,12 +456,34 @@ export function createStory(root) {
   camera.position.set(0, 30, 70);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2.5));
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   stage.appendChild(renderer.domElement);
+
+  // Supersample: the composer means MSAA no longer reaches the canvas, and
+  // rendering above the display's own ratio is better anti-aliasing anyway.
+  renderer.setPixelRatio(Math.min(devicePixelRatio * 1.3, 2));
+
+  // The scene renders into a linear target that carries its own depth; the
+  // resolve pass then reads colour and depth together and writes the canvas.
+  // Ping-ponging a composer over a shared depth texture is a feedback loop.
+  const sceneTarget = new THREE.WebGLRenderTarget(1, 1, {
+    type: THREE.HalfFloatType,
+    depthTexture: new THREE.DepthTexture(1, 1, THREE.UnsignedIntType),
+  });
+  renderer.toneMapping = THREE.NoToneMapping;   // the resolve pass owns it
+
+  const resolve = new THREE.Mesh(
+    new THREE.PlaneGeometry(2, 2),
+    new THREE.ShaderMaterial(RESOLVE_SHADER),
+  );
+  resolve.frustumCulled = false;
+  const resolveScene = new THREE.Scene().add(resolve);
+  const resolveCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  resolve.material.uniforms.tColor.value = sceneTarget.texture;
+  resolve.material.uniforms.tDepth.value = sceneTarget.depthTexture;
+  const ao = resolve.material.uniforms;
 
   const labelRenderer = new CSS2DRenderer({ element: labelLayer });
 
@@ -495,6 +647,9 @@ export function createStory(root) {
   }
 
   // ------------------------------------------------------------ outskirts ---
+  // The city we care about, sitting inside an ordinary one that fades into
+  // haze. Nothing out here is labelled, so the data buildings stay the heroes
+  // while the skyline stops ending in mid-air.
   const extraTrees = [];
   buildSurround();
 
@@ -502,12 +657,9 @@ export function createStory(root) {
     const inner = span / 2 + GRID_STEP * 0.6;
     const clearOfCity = (x, z) => Math.abs(x) > inner || Math.abs(z) > inner;
 
-    if (SURROUND === 'fabric') {
-      // The city we care about, sitting inside an ordinary one that fades into
-      // haze. Nothing out here is labelled, so the data buildings stay the
-      // heroes while the skyline stops ending in mid-air.
+    {
       const tones = [0xe8dcc4, 0xdccdb0, 0xe3d3bc, 0xcfc0a6, 0xd8cbb4, 0xc4b39a];
-      const geo = track(new THREE.BoxGeometry(1, 1, 1));
+      const geo = track(chamferedBox(0.05, 0.07, 2));
       const banks = tones.map((c) => {
         const m = new THREE.InstancedMesh(geo, track(new THREE.MeshStandardMaterial({
           color: c, roughness: 0.92,
@@ -544,57 +696,7 @@ export function createStory(root) {
         }
       }
       banks.forEach((m, k) => { m.count = used[k]; m.instanceMatrix.needsUpdate = true; });
-      return;
     }
-
-    if (SURROUND === 'mall') {
-      // A formal green mall down one side, after Grant Park: lawn, two gravel
-      // walks and rows of trees, with the country beyond.
-      const lawn = flat(44, 160, 0x8fae77, 0.012);
-      lawn.position.x = OUTSKIRTS + 22;
-      for (const at of [OUTSKIRTS + 2, OUTSKIRTS + 42]) {
-        const walk = flat(3.2, 160, 0xe4d6b8, 0.014);
-        walk.position.x = at;
-      }
-      for (let i = 0; i < 26; i++) {
-        const z = -76 + i * 6.1;
-        extraTrees.push([OUTSKIRTS + 6, z], [OUTSKIRTS + 38, z]);
-      }
-      for (let i = 0; i < 34; i++) {
-        const a = (i / 34) * TAU;
-        const r = 78 + noise(i) * 34;
-        const x = Math.sin(a) * r;
-        const z = Math.cos(a) * r;
-        if (clearOfCity(x, z)) extraTrees.push([x, z]);
-      }
-      return;
-    }
-
-    if (SURROUND === 'fields') {
-      // Open farmland: a patchwork of muted greens and golds, which gives the
-      // scene colour variety without putting another object in it.
-      const tones = [0x9fb47f, 0xb8bf84, 0xcbc48a, 0x8ea770, 0xd5c693, 0xa7b87a, 0xbdb578];
-      for (let i = 0; i < 54; i++) {
-        const a = noise(i) * TAU;
-        const r = 34 + noise(i * 3) * 82;
-        const x = Math.sin(a) * r;
-        const z = Math.cos(a) * r;
-        if (!clearOfCity(x, z)) continue;
-        const field = flat(15 + noise(i * 5) * 26, 15 + noise(i * 7) * 26,
-          tones[i % tones.length], 0.004 + (i % 6) * 0.0012);
-        field.position.set(x, field.position.y, z);
-        field.rotation.set(-Math.PI / 2, 0, (noise(i * 11) - 0.5) * 0.6);
-      }
-      for (let i = 0; i < 40; i++) {
-        const a = (i / 40) * TAU + 0.3;
-        const r = 46 + noise(i * 13) * 60;
-        const x = Math.sin(a) * r;
-        const z = Math.cos(a) * r;
-        if (clearOfCity(x, z)) extraTrees.push([x, z]);
-      }
-      return;
-    }
-    // 'open' — nothing but ground and haze.
   }
 
   // ---------------------------------------------------------------- trees ---
@@ -702,9 +804,9 @@ export function createStory(root) {
     return mesh;
   }
 
-  const boxGeo = track(new THREE.BoxGeometry(1, 1, 1));
-  const cylGeo = track(new THREE.CylinderGeometry(0.5, 0.5, 1, 24, 1));
-  const edgeGeo = track(new THREE.EdgesGeometry(boxGeo));
+  const boxGeo = track(chamferedBox());
+  const cylGeo = track(new THREE.CylinderGeometry(0.5, 0.5, 1, 40, 1));
+  const edgeGeo = track(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)));
 
   /** What a building wears on its head. Pure decoration — it sits above the
    *  parapet and is never a storey, so it never stands for a deal. */
@@ -1194,11 +1296,14 @@ export function createStory(root) {
       controls.target.lerp(lookGoal, 1 - Math.pow(0.002, dt));
     }
     controls.update();
-
     build();
     traffic(dt);
     placeLabels();
+    ao.uProjInv.value.copy(camera.projectionMatrixInverse);
+    renderer.setRenderTarget(sceneTarget);
     renderer.render(scene, camera);
+    renderer.setRenderTarget(null);
+    renderer.render(resolveScene, resolveCam);
     labelRenderer.render(scene, camera);
   }
 
@@ -1264,6 +1369,11 @@ export function createStory(root) {
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     renderer.setSize(w, h);
+    const buf = renderer.getDrawingBufferSize(new THREE.Vector2());
+    sceneTarget.setSize(buf.x, buf.y);
+    ao.uResolution.value.copy(buf);
+    ao.uProjScale.value = 0.5 * buf.y * camera.projectionMatrix.elements[5];
+    ao.uProjInv.value.copy(camera.projectionMatrixInverse);
     labelRenderer.setSize(w, h);
   }
 
@@ -1303,6 +1413,9 @@ export function createStory(root) {
     dispose() {
       running = false;
       controls.dispose();
+      sceneTarget.dispose();
+      resolve.geometry.dispose();
+      resolve.material.dispose();
       renderer.dispose();
       for (const d of disposables) d.dispose?.();
       stage.replaceChildren();
