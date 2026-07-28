@@ -45,6 +45,18 @@ const MONUMENT_Z = -27.5;   // behind the plaza, so the empty 1983 city still ha
 const RISE_YEARS = 0.55;     // how long a storey takes to slide into place
 
 const TAU = Math.PI * 2;
+/** What surrounds the city. Swap live with ?surround=fabric|mall|fields|open */
+const SURROUND = (() => {
+  try {
+    const v = new URLSearchParams(location.search).get('surround');
+    return ['fabric', 'mall', 'fields', 'open'].includes(v) ? v : 'fabric';
+  } catch (e) { return 'fabric'; }
+})();
+/** Deterministic 0..1 — the surroundings must look the same on every visit. */
+const noise = (i) => {
+  const x = Math.sin(i * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
+};
 // A warm horizon under a soft blue zenith. Grey is the thing that made the
 // earlier version feel like a simulation rather than a designed scene, so there
 // is none of it in the palette — the neutrals are all warm.
@@ -61,19 +73,13 @@ const RIDGES = [
   { radius: 232, min: 5, max: 15, seed: 6.4, peak: '#7d8a9e', haze: '#f1e4cf' },
 ];
 
-// Three grounds and a lake. The city sits on a paved plaza in open country with
-// water on one side — the composition needs somewhere for the eye to rest, and a
-// single flat expanse of tan was not it.
+// The city sits on a paved plaza in open country; what lies beyond the plaza is
+// chosen by SURROUND above.
 const COLOR = {
   land: 0x9db07f,       // open country around the city
   plaza: 0xdbcaa6,      // the paved ground the blocks sit on
   street: 0xeadcba,     // soft bands, no asphalt and no lane markings
   pavement: 0xf2e6cc,   // block plinths, a shade lighter so they read as raised
-  shore: 0xefdfb8,
-  shallow: 0x6fc4c2,
-  deep: 0x2a6d9c,
-  offing: 0x4f88ad,
-  foam: 0xeafbff,
   leafA: 0x7f9f6b,
   leafB: 0x94b07a,
   trunk: 0xa08a6d,
@@ -83,8 +89,7 @@ const COLOR = {
   stone: 0xd2c0a2,
 };
 
-const LAKE_FROM = 26;   // where the shore starts, just past the plaza
-const SHORE_W = 5;
+const OUTSKIRTS = 26;   // where the plaza ends and the surroundings begin
 
 // Architecture, borrowed from Chicago. Massing, façade and crown are decoration
 // — only storey HEIGHT carries data. `profile` returns the width multiplier at a
@@ -222,6 +227,25 @@ function buildTowers() {
   return towers;
 }
 
+/** A soft elliptical smudge, used as a contact shadow under each building.
+ *  Shadow maps alone leave everything looking like it is hovering; a short
+ *  ambient-occlusion falloff at the base is what actually sets an object down. */
+function contactTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(64, 64, 0, 64, 64, 62);
+  grad.addColorStop(0, 'rgba(60,46,28,0.55)');
+  grad.addColorStop(0.42, 'rgba(60,46,28,0.28)');
+  grad.addColorStop(0.72, 'rgba(60,46,28,0.08)');
+  grad.addColorStop(1, 'rgba(60,46,28,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 128, 128);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 /** A soft flat blob — used for the sun's halo and for the clouds. */
 function blobTexture(alpha, stops) {
   const c = document.createElement('canvas');
@@ -296,13 +320,13 @@ export function createStory(root) {
   const track = (x) => { disposables.push(x); return x; };
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(SKY_HORIZON, 130, 420);
+  scene.fog = new THREE.FogExp2(SKY_HORIZON, 0.0042);
 
   const camera = new THREE.PerspectiveCamera(46, 1, 0.5, 900);
   camera.position.set(0, 30, 70);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2.5));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
   renderer.shadowMap.enabled = true;
@@ -346,7 +370,7 @@ export function createStory(root) {
   const sun = new THREE.DirectionalLight(0xfff0d2, 2.9);
   sun.position.copy(SUN_DIR).multiplyScalar(260);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(3072, 3072);
   sun.shadow.camera.near = 20;
   sun.shadow.camera.far = 520;
   sun.shadow.camera.left = -80;
@@ -412,7 +436,7 @@ export function createStory(root) {
   // Mountains on the horizon, painted rather than lit — near ridges darker,
   // far ones hazier, each fading into the sky along its base.
   for (const r of RIDGES) {
-    const mesh = makeRidge(r, Math.PI / 2, 0.62);
+    const mesh = makeRidge(r, Math.PI / 2, 0);
     track(mesh.geometry);
     track(mesh.material);
     scene.add(mesh);
@@ -437,116 +461,6 @@ export function createStory(root) {
   flat(1600, 1600, COLOR.land, 0);
   flat(span + GRID_STEP * 2.4, span + GRID_STEP * 2.4, COLOR.plaza, 0.01);
 
-  // Lake Michigan off to one side: the colour anchor, and somewhere for the eye
-  // to rest instead of another acre of paving. The surface is a standard
-  // material with the wave motion injected into it, so it still takes the
-  // scene's sun and fog — a low roughness plus moving normals is what produces
-  // the glitter path across the water.
-  const lake = { uTime: { value: 0 } };
-  {
-    const shore = flat(SHORE_W, 1600, COLOR.shore, 0.012);
-    shore.position.x = LAKE_FROM + SHORE_W / 2;
-
-    const edge = LAKE_FROM + SHORE_W;
-    const uniforms = {
-      uTime: lake.uTime,
-      uEdge: { value: edge },
-      uHalfW: { value: 280 },
-      uShallow: { value: new THREE.Color(COLOR.shallow) },
-      uDeep: { value: new THREE.Color(COLOR.deep) },
-      uFoam: { value: new THREE.Color(COLOR.foam) },
-      uSky: { value: new THREE.Color(SKY_MID) },
-    };
-
-    const mat = track(new THREE.MeshStandardMaterial({
-      color: 0xffffff, roughness: 0.11, metalness: 0.02,
-    }));
-    mat.customProgramCacheKey = () => 'lake-surface';
-    mat.onBeforeCompile = (shader) => {
-      Object.assign(shader.uniforms, uniforms);
-      shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', `#include <common>
-          uniform float uTime;
-          uniform float uHalfW;
-          varying vec2 vSurf;
-          // Swell dies away in the shallows, so the shoreline stays calm.
-          #define SHOAL(p) smoothstep(0.0, 16.0, p.x + uHalfW)
-          #define WAVE(p) ( ( sin(p.x * 0.13 + uTime * 0.85) * 0.30 \
-                            + sin(p.y * 0.19 - uTime * 0.66) * 0.22 \
-                            + sin((p.x * 0.6 + p.y * 0.8) * 0.27 + uTime * 1.45) * 0.12 ) * SHOAL(p) )`)
-        .replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>
-          float shoal = SHOAL(position);
-          float c3 = cos((position.x * 0.6 + position.y * 0.8) * 0.27 + uTime * 1.45) * 0.27 * 0.12;
-          float dX = (cos(position.x * 0.13 + uTime * 0.85) * 0.13 * 0.30 + c3 * 0.6) * shoal;
-          float dY = (cos(position.y * 0.19 - uTime * 0.66) * 0.19 * 0.22 + c3 * 0.8) * shoal;
-          // Chop: short, steep wavelets that never move the surface, only tilt
-          // it, so the sun breaks into a glitter path instead of one highlight.
-          dX += ( cos(position.x * 1.7 + position.y * 0.4 + uTime * 3.1) * 0.055
-                + cos(position.x * 3.3 - position.y * 1.1 + uTime * 4.6) * 0.03 ) * shoal;
-          dY += ( cos(position.y * 1.9 - position.x * 0.3 - uTime * 2.7) * 0.05
-                + cos(position.y * 3.7 + position.x * 0.9 + uTime * 5.2) * 0.028 ) * shoal;
-          objectNormal = normalize(vec3(-dX, -dY, 1.0));`)
-        .replace('#include <begin_vertex>', `#include <begin_vertex>
-          transformed.z += WAVE(position);
-          vSurf = (modelMatrix * vec4(transformed, 1.0)).xz;`);
-      shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', `#include <common>
-          uniform float uTime;
-          uniform float uEdge;
-          uniform vec3 uShallow;
-          uniform vec3 uDeep;
-          uniform vec3 uFoam;
-          uniform vec3 uSky;
-          varying vec2 vSurf;`)
-        .replace('#include <color_fragment>', `#include <color_fragment>
-          // Open water is close to one colour; only the shallows near the beach
-          // lighten. A wide turquoise-to-navy ramp read as rings, not a lake.
-          float off = vSurf.x - uEdge;
-          diffuseColor.rgb = mix(uShallow, uDeep, smoothstep(0.0, 1.0, clamp(off / 11.0, 0.0, 1.0)));
-          // Surf: a narrow band whose edge wanders, rather than a painted stripe.
-          float wander = sin(vSurf.y * 0.23 + uTime * 0.5) * 0.9
-                       + sin(vSurf.y * 0.61 - uTime * 0.8) * 0.5
-                       + sin(vSurf.y * 1.43 + uTime * 1.3) * 0.25;
-          float surf = 1.0 - smoothstep(0.0, 1.9 + wander * 0.6, off);
-          diffuseColor.rgb = mix(diffuseColor.rgb, uFoam, surf * 0.7);`)
-        // The thing that actually makes water look like water: at grazing angles
-        // you see the sky in it, not the water's own colour.
-        .replace('#include <opaque_fragment>', `
-          float fres = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 4.0);
-          outgoingLight = mix(outgoingLight, uSky, fres * 0.72);
-          #include <opaque_fragment>`);
-    };
-
-    const surface = new THREE.Mesh(track(new THREE.PlaneGeometry(560, 900, 190, 200)), mat);
-    surface.rotation.x = -Math.PI / 2;
-    surface.position.set(edge + 280, 0.014, 0);
-    scene.add(surface);
-
-    // Deep water carrying on to the horizon, beyond where waves would read.
-    const far = flat(1500, 1900, COLOR.offing, 0.008);
-    far.position.x = edge + 740;
-    far.receiveShadow = false;
-  }
-
-  // A few small craft, because an empty lake is a swimming pool.
-  const boats = [];
-  {
-    const hullGeo = track(new THREE.BoxGeometry(0.7, 0.26, 2.1));
-    const cabinGeo = track(new THREE.BoxGeometry(0.5, 0.3, 0.7));
-    const hullMat = track(new THREE.MeshStandardMaterial({ color: 0xf6f1e6, roughness: 0.6 }));
-    const cabinMat = track(new THREE.MeshStandardMaterial({ color: 0xc4d6dd, roughness: 0.5 }));
-    for (let i = 0; i < 4; i++) {
-      const node = new THREE.Group();
-      const hull = new THREE.Mesh(hullGeo, hullMat);
-      hull.castShadow = true;
-      const cabin = new THREE.Mesh(cabinGeo, cabinMat);
-      cabin.position.set(0, 0.26, -0.2);
-      node.add(hull, cabin);
-      node.position.set(LAKE_FROM + SHORE_W + 9 + i * 13, 0.16, 0);
-      scene.add(node);
-      boats.push({ node, z: -40 + i * 26, speed: 1.1 + (i % 3) * 0.5, dir: i % 2 ? 1 : -1 });
-    }
-  }
 
   // Streets: soft bands a shade lighter than the ground. No asphalt, no lane
   // markings — the markings were most of what made the ground look busy.
@@ -580,6 +494,109 @@ export function createStory(root) {
     }
   }
 
+  // ------------------------------------------------------------ outskirts ---
+  const extraTrees = [];
+  buildSurround();
+
+  function buildSurround() {
+    const inner = span / 2 + GRID_STEP * 0.6;
+    const clearOfCity = (x, z) => Math.abs(x) > inner || Math.abs(z) > inner;
+
+    if (SURROUND === 'fabric') {
+      // The city we care about, sitting inside an ordinary one that fades into
+      // haze. Nothing out here is labelled, so the data buildings stay the
+      // heroes while the skyline stops ending in mid-air.
+      const tones = [0xe8dcc4, 0xdccdb0, 0xe3d3bc, 0xcfc0a6, 0xd8cbb4, 0xc4b39a];
+      const geo = track(new THREE.BoxGeometry(1, 1, 1));
+      const banks = tones.map((c) => {
+        const m = new THREE.InstancedMesh(geo, track(new THREE.MeshStandardMaterial({
+          color: c, roughness: 0.92,
+        })), 420);
+        m.castShadow = true;
+        m.receiveShadow = true;
+        m.count = 0;
+        scene.add(m);
+        return m;
+      });
+      const used = tones.map(() => 0);
+      const d3 = new THREE.Object3D();
+      let i = 0;
+      for (let gx = -10; gx <= 10; gx++) {
+        for (let gz = -10; gz <= 10; gz++) {
+          const cx = gx * 11.5;
+          const cz = gz * 11.5;
+          if (!clearOfCity(cx, cz)) continue;
+          const away = Math.hypot(cx, cz);
+          if (away > 118) continue;
+          const n = 2 + Math.floor(noise(i) * 2);
+          for (let k = 0; k < n; k++, i++) {
+            const b = Math.floor(noise(i * 3 + 1) * tones.length);
+            if (used[b] >= 420) continue;
+            const h = 0.9 + noise(i * 11) * (away > 62 ? 2.0 : 4.2);
+            d3.position.set(
+              cx + (noise(i * 13) - 0.5) * 5.2, h / 2,
+              cz + (noise(i * 17) - 0.5) * 5.2,
+            );
+            d3.scale.set(2.2 + noise(i * 5) * 2.8, h, 2.2 + noise(i * 7) * 2.8);
+            d3.updateMatrix();
+            banks[b].setMatrixAt(used[b]++, d3.matrix);
+          }
+        }
+      }
+      banks.forEach((m, k) => { m.count = used[k]; m.instanceMatrix.needsUpdate = true; });
+      return;
+    }
+
+    if (SURROUND === 'mall') {
+      // A formal green mall down one side, after Grant Park: lawn, two gravel
+      // walks and rows of trees, with the country beyond.
+      const lawn = flat(44, 160, 0x8fae77, 0.012);
+      lawn.position.x = OUTSKIRTS + 22;
+      for (const at of [OUTSKIRTS + 2, OUTSKIRTS + 42]) {
+        const walk = flat(3.2, 160, 0xe4d6b8, 0.014);
+        walk.position.x = at;
+      }
+      for (let i = 0; i < 26; i++) {
+        const z = -76 + i * 6.1;
+        extraTrees.push([OUTSKIRTS + 6, z], [OUTSKIRTS + 38, z]);
+      }
+      for (let i = 0; i < 34; i++) {
+        const a = (i / 34) * TAU;
+        const r = 78 + noise(i) * 34;
+        const x = Math.sin(a) * r;
+        const z = Math.cos(a) * r;
+        if (clearOfCity(x, z)) extraTrees.push([x, z]);
+      }
+      return;
+    }
+
+    if (SURROUND === 'fields') {
+      // Open farmland: a patchwork of muted greens and golds, which gives the
+      // scene colour variety without putting another object in it.
+      const tones = [0x9fb47f, 0xb8bf84, 0xcbc48a, 0x8ea770, 0xd5c693, 0xa7b87a, 0xbdb578];
+      for (let i = 0; i < 54; i++) {
+        const a = noise(i) * TAU;
+        const r = 34 + noise(i * 3) * 82;
+        const x = Math.sin(a) * r;
+        const z = Math.cos(a) * r;
+        if (!clearOfCity(x, z)) continue;
+        const field = flat(15 + noise(i * 5) * 26, 15 + noise(i * 7) * 26,
+          tones[i % tones.length], 0.004 + (i % 6) * 0.0012);
+        field.position.set(x, field.position.y, z);
+        field.rotation.set(-Math.PI / 2, 0, (noise(i * 11) - 0.5) * 0.6);
+      }
+      for (let i = 0; i < 40; i++) {
+        const a = (i / 40) * TAU + 0.3;
+        const r = 46 + noise(i * 13) * 60;
+        const x = Math.sin(a) * r;
+        const z = Math.cos(a) * r;
+        if (clearOfCity(x, z)) extraTrees.push([x, z]);
+      }
+      return;
+    }
+    // 'open' — nothing but ground and haze.
+  }
+
   // ---------------------------------------------------------------- trees ---
   // Trees as clustered low-poly canopies rather than cones on sticks — three
   // overlapping blobs at slightly different scales read as foliage; one cone
@@ -604,6 +621,7 @@ export function createStory(root) {
       const r = edge + 2 + ((i * 13) % 7);
       sites.push([Math.sin(a) * r * 1.05, Math.cos(a) * r]);
     }
+    sites.push(...extraTrees);
 
     const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, sites.length);
     const blobs = leafMats.map((m) => new THREE.InstancedMesh(canopy, m, sites.length * 2));
@@ -611,7 +629,6 @@ export function createStory(root) {
     const m = new THREE.Object3D();
     const counts = [0, 0];
     sites.forEach(([x, z], i) => {
-      if (Math.abs(x) > LAKE_FROM) return;              // nothing grows in the lake
       const s = 0.9 + ((i * 7) % 5) * 0.1;
       m.scale.setScalar(s);
       m.position.set(x, 0.25 * s, z);
@@ -669,6 +686,22 @@ export function createStory(root) {
   }
 
   // ------------------------------------------------------------ buildings --
+  // One shared plane and texture for every contact shadow.
+  const contactTex = track(contactTexture());
+  const contactGeo = track(new THREE.PlaneGeometry(1, 1));
+  const contactMat = track(new THREE.MeshBasicMaterial({
+    map: contactTex, transparent: true, depthWrite: false, opacity: 0.9,
+  }));
+  function groundShadow(parent, w, d, y) {
+    const mesh = new THREE.Mesh(contactGeo, contactMat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.scale.set(w * 2.3, d * 2.3, 1);
+    mesh.position.y = y;
+    mesh.renderOrder = 1;
+    parent.add(mesh);
+    return mesh;
+  }
+
   const boxGeo = track(new THREE.BoxGeometry(1, 1, 1));
   const cylGeo = track(new THREE.CylinderGeometry(0.5, 0.5, 1, 24, 1));
   const edgeGeo = track(new THREE.EdgesGeometry(boxGeo));
@@ -790,6 +823,7 @@ export function createStory(root) {
 
     // The plinth is the founding company itself — it appears the year it did.
     const baseDims = planDims(t.style, widthAt(0) + 0.4);
+    groundShadow(group, baseDims.x, baseDims.z, 0.17);
     const plinth = facade(t, baseDims.x, PLINTH_H, baseDims.z, 0);
     plinth.position.y = 0.16 + PLINTH_H / 2;
     plinth.userData.tower = t;
@@ -1032,16 +1066,6 @@ export function createStory(root) {
   }
 
   function traffic(dt) {
-    lake.uTime.value += dt;
-    for (const b of boats) {
-      b.z += b.speed * b.dir * dt;
-      if (b.z > 60) b.z = -60;
-      if (b.z < -60) b.z = 60;
-      b.node.position.z = b.z;
-      b.node.rotation.y = b.dir > 0 ? 0 : Math.PI;
-      b.node.position.y = 0.16 + Math.sin(lake.uTime.value * 1.4 + b.z * 0.2) * 0.09;
-      b.node.rotation.z = Math.sin(lake.uTime.value * 1.1 + b.z * 0.3) * 0.05;
-    }
     for (const c of clouds) {
       c.a += c.speed * dt;
       c.node.position.set(Math.sin(c.a) * c.r, c.node.position.y, Math.cos(c.a) * c.r);
