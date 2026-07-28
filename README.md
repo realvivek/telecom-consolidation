@@ -39,8 +39,11 @@ a floor. Click any building to walk up to it and read its storeys by name.
 The architecture is borrowed from Chicago — Sears Tower setbacks, a tapered Hancock
 tube, Aon's limestone slab, Board of Trade deco, Tribune Gothic pinnacles, Wrigley
 terracotta, Marina City cylinders, Monadnock brick, Mies glass boxes. The city sits
-on a paved plaza in open country with a lake on one side, under a low afternoon sun
-and a ridge of hills. Volumes are flat and matte, shaded by height rather than
+on a paved plaza in open country under a low afternoon sun, with four ridges of
+hills for depth and Lake Michigan on one side — the water is a standard material
+with wave motion injected into it, so it takes the scene's own sun and fog, and a
+grazing-angle sky reflection is what makes it read as water rather than as a blue
+plane. Volumes are flat and matte, shaded by height rather than
 textured: a window grid at this scale was sub-pixel speckle, whereas a value
 gradient is what gives a massed form depth.
 

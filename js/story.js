@@ -58,6 +58,7 @@ const RIDGES = [
   { radius: 400, min: 14, max: 40, seed: 8.9, peak: '#a9b3cd', haze: '#f1e4cf' },
   { radius: 345, min: 11, max: 32, seed: 4.2, peak: '#98a5c4', haze: '#f1e4cf' },
   { radius: 300, min: 8, max: 25, seed: 1.7, peak: '#8493b8', haze: '#f1e4cf' },
+  { radius: 232, min: 5, max: 15, seed: 6.4, peak: '#7d8a9e', haze: '#f1e4cf' },
 ];
 
 // Three grounds and a lake. The city sits on a paved plaza in open country with
@@ -68,8 +69,11 @@ const COLOR = {
   plaza: 0xdbcaa6,      // the paved ground the blocks sit on
   street: 0xeadcba,     // soft bands, no asphalt and no lane markings
   pavement: 0xf2e6cc,   // block plinths, a shade lighter so they read as raised
-  shore: 0xe9d9b4,
-  water: 0x5c9ab6,
+  shore: 0xefdfb8,
+  shallow: 0x6fc4c2,
+  deep: 0x2a6d9c,
+  offing: 0x4f88ad,
+  foam: 0xeafbff,
   leafA: 0x7f9f6b,
   leafB: 0x94b07a,
   trunk: 0xa08a6d,
@@ -95,7 +99,7 @@ const STYLES = {
   },
   taper: {
     label: 'Tapered tube, after the John Hancock Center',
-    wall: '#7b8aa0', plan: 'box',
+    wall: '#5b6b86', plan: 'box',
     profile: (f) => 1 - f * 0.44,
     crown: 'antennas',
   },
@@ -107,7 +111,7 @@ const STYLES = {
   },
   deco: {
     label: 'Art-deco setbacks, after the Board of Trade',
-    wall: '#e9d9bd', plan: 'box',
+    wall: '#dcc59a', plan: 'box',
     profile: (f) => (f < 0.48 ? 1 : f < 0.76 ? 0.79 : 0.58),
     crown: 'pyramid',
   },
@@ -125,19 +129,19 @@ const STYLES = {
   },
   glassbox: {
     label: 'Steel and glass, after 860–880 Lake Shore Drive',
-    wall: '#8fa5ab', plan: 'slab',
+    wall: '#6b8a90', plan: 'slab',
     profile: () => 1,
     crown: 'parapet',
   },
   round: {
     label: 'Cylindrical, after Marina City',
-    wall: '#eedad1', plan: 'round',
+    wall: '#e5c9bd', plan: 'round',
     profile: () => 1,
     crown: 'disc',
   },
   masonry: {
     label: 'Chicago School masonry, after the Monadnock Building',
-    wall: '#c98d6f', plan: 'slab',
+    wall: '#b06d4d', plan: 'slab',
     profile: () => 1,
     crown: 'cornice',
   },
@@ -434,13 +438,114 @@ export function createStory(root) {
   flat(span + GRID_STEP * 2.4, span + GRID_STEP * 2.4, COLOR.plaza, 0.01);
 
   // Lake Michigan off to one side: the colour anchor, and somewhere for the eye
-  // to rest instead of another acre of paving.
+  // to rest instead of another acre of paving. The surface is a standard
+  // material with the wave motion injected into it, so it still takes the
+  // scene's sun and fog — a low roughness plus moving normals is what produces
+  // the glitter path across the water.
+  const lake = { uTime: { value: 0 } };
   {
     const shore = flat(SHORE_W, 1600, COLOR.shore, 0.012);
     shore.position.x = LAKE_FROM + SHORE_W / 2;
-    const water = flat(1200, 1600, COLOR.water, 0.014, { roughness: 0.42, metalness: 0.1 });
-    water.position.x = LAKE_FROM + SHORE_W + 600;
-    water.receiveShadow = false;
+
+    const edge = LAKE_FROM + SHORE_W;
+    const uniforms = {
+      uTime: lake.uTime,
+      uEdge: { value: edge },
+      uHalfW: { value: 280 },
+      uShallow: { value: new THREE.Color(COLOR.shallow) },
+      uDeep: { value: new THREE.Color(COLOR.deep) },
+      uFoam: { value: new THREE.Color(COLOR.foam) },
+      uSky: { value: new THREE.Color(SKY_MID) },
+    };
+
+    const mat = track(new THREE.MeshStandardMaterial({
+      color: 0xffffff, roughness: 0.11, metalness: 0.02,
+    }));
+    mat.customProgramCacheKey = () => 'lake-surface';
+    mat.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, uniforms);
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', `#include <common>
+          uniform float uTime;
+          uniform float uHalfW;
+          varying vec2 vSurf;
+          // Swell dies away in the shallows, so the shoreline stays calm.
+          #define SHOAL(p) smoothstep(0.0, 16.0, p.x + uHalfW)
+          #define WAVE(p) ( ( sin(p.x * 0.13 + uTime * 0.85) * 0.30 \
+                            + sin(p.y * 0.19 - uTime * 0.66) * 0.22 \
+                            + sin((p.x * 0.6 + p.y * 0.8) * 0.27 + uTime * 1.45) * 0.12 ) * SHOAL(p) )`)
+        .replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>
+          float shoal = SHOAL(position);
+          float c3 = cos((position.x * 0.6 + position.y * 0.8) * 0.27 + uTime * 1.45) * 0.27 * 0.12;
+          float dX = (cos(position.x * 0.13 + uTime * 0.85) * 0.13 * 0.30 + c3 * 0.6) * shoal;
+          float dY = (cos(position.y * 0.19 - uTime * 0.66) * 0.19 * 0.22 + c3 * 0.8) * shoal;
+          // Chop: short, steep wavelets that never move the surface, only tilt
+          // it, so the sun breaks into a glitter path instead of one highlight.
+          dX += ( cos(position.x * 1.7 + position.y * 0.4 + uTime * 3.1) * 0.055
+                + cos(position.x * 3.3 - position.y * 1.1 + uTime * 4.6) * 0.03 ) * shoal;
+          dY += ( cos(position.y * 1.9 - position.x * 0.3 - uTime * 2.7) * 0.05
+                + cos(position.y * 3.7 + position.x * 0.9 + uTime * 5.2) * 0.028 ) * shoal;
+          objectNormal = normalize(vec3(-dX, -dY, 1.0));`)
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+          transformed.z += WAVE(position);
+          vSurf = (modelMatrix * vec4(transformed, 1.0)).xz;`);
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', `#include <common>
+          uniform float uTime;
+          uniform float uEdge;
+          uniform vec3 uShallow;
+          uniform vec3 uDeep;
+          uniform vec3 uFoam;
+          uniform vec3 uSky;
+          varying vec2 vSurf;`)
+        .replace('#include <color_fragment>', `#include <color_fragment>
+          // Open water is close to one colour; only the shallows near the beach
+          // lighten. A wide turquoise-to-navy ramp read as rings, not a lake.
+          float off = vSurf.x - uEdge;
+          diffuseColor.rgb = mix(uShallow, uDeep, smoothstep(0.0, 1.0, clamp(off / 11.0, 0.0, 1.0)));
+          // Surf: a narrow band whose edge wanders, rather than a painted stripe.
+          float wander = sin(vSurf.y * 0.23 + uTime * 0.5) * 0.9
+                       + sin(vSurf.y * 0.61 - uTime * 0.8) * 0.5
+                       + sin(vSurf.y * 1.43 + uTime * 1.3) * 0.25;
+          float surf = 1.0 - smoothstep(0.0, 1.9 + wander * 0.6, off);
+          diffuseColor.rgb = mix(diffuseColor.rgb, uFoam, surf * 0.7);`)
+        // The thing that actually makes water look like water: at grazing angles
+        // you see the sky in it, not the water's own colour.
+        .replace('#include <opaque_fragment>', `
+          float fres = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 4.0);
+          outgoingLight = mix(outgoingLight, uSky, fres * 0.72);
+          #include <opaque_fragment>`);
+    };
+
+    const surface = new THREE.Mesh(track(new THREE.PlaneGeometry(560, 900, 190, 200)), mat);
+    surface.rotation.x = -Math.PI / 2;
+    surface.position.set(edge + 280, 0.014, 0);
+    scene.add(surface);
+
+    // Deep water carrying on to the horizon, beyond where waves would read.
+    const far = flat(1500, 1900, COLOR.offing, 0.008);
+    far.position.x = edge + 740;
+    far.receiveShadow = false;
+  }
+
+  // A few small craft, because an empty lake is a swimming pool.
+  const boats = [];
+  {
+    const hullGeo = track(new THREE.BoxGeometry(0.7, 0.26, 2.1));
+    const cabinGeo = track(new THREE.BoxGeometry(0.5, 0.3, 0.7));
+    const hullMat = track(new THREE.MeshStandardMaterial({ color: 0xf6f1e6, roughness: 0.6 }));
+    const cabinMat = track(new THREE.MeshStandardMaterial({ color: 0xc4d6dd, roughness: 0.5 }));
+    for (let i = 0; i < 4; i++) {
+      const node = new THREE.Group();
+      const hull = new THREE.Mesh(hullGeo, hullMat);
+      hull.castShadow = true;
+      const cabin = new THREE.Mesh(cabinGeo, cabinMat);
+      cabin.position.set(0, 0.26, -0.2);
+      node.add(hull, cabin);
+      node.position.set(LAKE_FROM + SHORE_W + 9 + i * 13, 0.16, 0);
+      scene.add(node);
+      boats.push({ node, z: -40 + i * 26, speed: 1.1 + (i % 3) * 0.5, dir: i % 2 ? 1 : -1 });
+    }
   }
 
   // Streets: soft bands a shade lighter than the ground. No asphalt, no lane
@@ -927,6 +1032,16 @@ export function createStory(root) {
   }
 
   function traffic(dt) {
+    lake.uTime.value += dt;
+    for (const b of boats) {
+      b.z += b.speed * b.dir * dt;
+      if (b.z > 60) b.z = -60;
+      if (b.z < -60) b.z = 60;
+      b.node.position.z = b.z;
+      b.node.rotation.y = b.dir > 0 ? 0 : Math.PI;
+      b.node.position.y = 0.16 + Math.sin(lake.uTime.value * 1.4 + b.z * 0.2) * 0.09;
+      b.node.rotation.z = Math.sin(lake.uTime.value * 1.1 + b.z * 0.3) * 0.05;
+    }
     for (const c of clouds) {
       c.a += c.speed * dt;
       c.node.position.set(Math.sin(c.a) * c.r, c.node.position.y, Math.cos(c.a) * c.r);
