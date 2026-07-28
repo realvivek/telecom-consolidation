@@ -43,9 +43,15 @@ wider low-rise city that fades into haze, under a low afternoon sun with four
 ridges of hills behind it. Nothing in the surrounding fabric is labelled, so the
 data buildings stay the heroes while the skyline stops ending in mid-air.
 
-Volumes are flat and matte, shaded by height rather than textured: a window grid
-at this scale was sub-pixel speckle, whereas a value gradient is what gives a
-massed form depth. Every edge is chamfered, so the sun catches along each arris.
+Every volume is glazed. Windows are drawn with a recess, a sill and a lintel, at
+a fixed world size, so a tall storey gets more rows rather than a stretched grid
+— and the surrounding fabric is glazed on the same pitch, so a two-storey shed
+and a ten-storey block carry the same window. The texture carries the hue and
+the material carries only a value gradient up the building, which keeps a dark
+tube from crushing to a silhouette while a limestone slab stays paper-white.
+Every edge is chamfered, so the sun catches along each arris. On the streets:
+kerbs, crossings at every junction, lamp posts, planters, benches, bins, and
+vents and steam on the roofs.
 
 None of the styling means anything: massing, façade and crown are decoration, and
 only storey height is data. Height is linear in deal value with a minimum so the
@@ -72,8 +78,11 @@ No build step, no bundler, no CDN — a static page of ES modules.
   shadow mapping and layered glare sprites, drifting clouds, and four
   procedurally generated horizon ridges painted with aerial perspective. Each
   building's massing comes from a style `profile(fraction) → width` function,
-  which is what produces the setbacks and tapers; storeys are chamfered, flat
-  matte volumes tinted by height. Trees are clustered instanced canopies.
+  which is what produces the setbacks and tapers. Façades are box-projected so
+  the same texture reads correctly on every face of a slab, and the fabric's
+  instanced boxes divide their own instance scale in the vertex shader to hold
+  the window pitch constant across every size of building. Trees are clustered
+  instanced canopies.
 - **Rendering**: the scene draws into a linear half-float target carrying its own
   depth texture, and a single resolve pass reads colour and depth together to
   apply screen-space ambient occlusion, exposure, ACES tone mapping and the
@@ -83,9 +92,11 @@ No build step, no bundler, no CDN — a static page of ES modules.
   shadow maps give you the sun, occlusion gives you the corners. The canvas is
   supersampled rather than multisampled, since a resolve pass means MSAA never
   reaches it. `CSS2DRenderer` gives crisp DOM labels, with a
-  screen-space declutter pass that drops any label which would overprint a nearer
-  one or land on the interface. Loaded lazily — the module is only fetched when
-  someone opens it.
+  screen-space declutter pass that drops any label which would overprint a
+  nearer one or land on the interface. Both tests use real boxes — each label is
+  measured once, and the panels are measured rather than guessed at, since the
+  deal card moves and resizes with its contents. Loaded lazily — the module is
+  only fetched when someone opens it.
 - **Accessibility**: every value in a chart is also written out in the ledger,
   keyboard focus shows what hover shows, `prefers-reduced-motion` turns off autoplay,
   and the page works without WebGL (story mode simply stays hidden).

@@ -97,7 +97,7 @@ const STYLES = {
   },
   taper: {
     label: 'Tapered tube, after the John Hancock Center',
-    wall: '#5b6b86', plan: 'box',
+    wall: '#93a3bd', plan: 'box',
     profile: (f) => 1 - f * 0.44,
     crown: 'antennas',
   },
@@ -127,7 +127,7 @@ const STYLES = {
   },
   glassbox: {
     label: 'Steel and glass, after 860–880 Lake Shore Drive',
-    wall: '#6b8a90', plan: 'slab',
+    wall: '#a2bcc0', plan: 'slab',
     profile: () => 1,
     crown: 'parapet',
   },
@@ -145,8 +145,80 @@ const STYLES = {
   },
 };
 // The tallest buildings get the styles that were invented for tall buildings.
+// Reveal and sill are derived from the wall so a style only declares one hue.
+// Glazing is a lerp toward a single cool dark rather than a multiply: a
+// multiply gives a pale limestone plenty of contrast but crushes a dark blue
+// tube to a silhouette, and one near-black building in a pastel city reads as
+// a hole punched in it.
+const GLAZE = new THREE.Color('#2f3a49');
+const SHADE = new THREE.Color('#232b36');
+for (const st of Object.values(STYLES)) {
+  const wall = new THREE.Color(st.wall);
+  st.glass = `#${wall.clone().lerp(GLAZE, 0.56).getHexString()}`;
+  st.reveal = `#${wall.clone().lerp(SHADE, 0.74).getHexString()}`;
+  st.sill = `#${wall.clone().lerp(new THREE.Color(0xffffff), 0.42).getHexString()}`;
+}
+
 const TALL_ORDER = ['bundle', 'taper', 'limestone', 'deco', 'gothic', 'terracotta', 'glassbox', 'round'];
 const LOW_ORDER = ['masonry', 'round', 'terracotta', 'glassbox', 'gothic', 'deco'];
+
+/** Windows drawn with a recess, a sill and a lintel rather than a flat swatch.
+ *  One window row per tile vertically, so the repeat can be set per storey and
+ *  a tall storey gets more rows instead of a squashed grid. */
+function facadeTexture({ wall, glass, reveal, sill }) {
+  const c = document.createElement('canvas');
+  c.width = 64;
+  c.height = 16;
+  const g = c.getContext('2d');
+  g.fillStyle = wall;
+  g.fillRect(0, 0, 64, 16);
+  for (let col = 0; col < 4; col++) {
+    const x = col * 16;
+    g.fillStyle = reveal;                       // the opening, in shadow
+    g.fillRect(x + 3, 2, 10, 11);
+    g.fillStyle = glass;                        // glazing, set back
+    g.fillRect(x + 4, 3, 8, 9);
+    g.fillStyle = sill;                         // sill catching the light
+    g.fillRect(x + 2, 12, 12, 2);
+    g.fillStyle = reveal;                       // lintel above
+    g.fillRect(x + 3, 1, 10, 1);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/** Box-project UVs onto a unit-cube geometry, choosing the plane from the
+ *  dominant normal axis. ExtrudeGeometry's own UVs are laid out for a flat
+ *  shape, so a façade mapped with them smears; this gives every side face a
+ *  clean 0–1 sweep in x/z and 0–1 up in y. `zx` is depth ÷ width, which keeps
+ *  windows the same size on the short faces of a slab as on the long ones. */
+function boxUV(geo, zx = 1) {
+  const pos = geo.attributes.position;
+  const nor = geo.attributes.normal;
+  const uv = new Float32Array(pos.count * 2);
+  for (let i = 0; i < pos.count; i++) {
+    const nx = Math.abs(nor.getX(i));
+    const ny = Math.abs(nor.getY(i));
+    const nz = Math.abs(nor.getZ(i));
+    let u, v;
+    if (ny >= nx && ny >= nz) {          // roof and soffit
+      u = pos.getX(i) + 0.5;
+      v = pos.getZ(i) + 0.5;
+    } else if (nx >= nz) {               // the two short faces of a slab
+      u = (pos.getZ(i) + 0.5) * zx;
+      v = pos.getY(i) + 0.5;
+    } else {                             // the two long faces
+      u = pos.getX(i) + 0.5;
+      v = pos.getY(i) + 0.5;
+    }
+    uv[i * 2] = u;
+    uv[i * 2 + 1] = v;
+  }
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  return geo;
+}
 
 /** A unit cube with chamfered edges and slightly rounded vertical corners.
  *  Hard 90-degree edges are the giveaway that something was thrown together —
@@ -176,8 +248,7 @@ function chamferedBox(bevel = 0.028, radius = 0.05, curve = 3) {
   geo.rotateX(-Math.PI / 2);
   geo.center();
   geo.computeVertexNormals();
-  geo.deleteAttribute('uv');
-  return geo;
+  return boxUV(geo);
 }
 
 /** Footprint in x and z for a given style at a given width. */
@@ -653,6 +724,55 @@ export function createStory(root) {
   const extraTrees = [];
   buildSurround();
 
+  // Windows on the surrounding fabric too. A field of blank boxes standing next
+  // to windowed towers is what made the outskirts read as packaging foam, and
+  // it is the first thing the eye picks up in a wide shot. Instances vary in
+  // size, so the shader divides the instance's own scale by the window pitch —
+  // one window is the same size on a two-storey shed as on a ten-storey block.
+  const FAB_W = 2.7;    // world units per pair of windows
+  const FAB_H = 1.15;   // world units per storey
+
+  function fabricFacade(hex) {
+    const wall = new THREE.Color(hex);
+    const c = document.createElement('canvas');
+    c.width = 32;
+    c.height = 16;
+    const g = c.getContext('2d');
+    g.fillStyle = `#${wall.getHexString()}`;
+    g.fillRect(0, 0, 32, 16);
+    g.fillStyle = `#${wall.clone().lerp(GLAZE, 0.5).getHexString()}`;
+    g.fillRect(4, 3, 9, 8);
+    g.fillRect(18, 3, 9, 8);
+    g.fillStyle = `#${wall.clone().lerp(new THREE.Color(0xffffff), 0.3).getHexString()}`;
+    g.fillRect(3, 11, 11, 1);
+    g.fillRect(17, 11, 11, 1);
+    const tex = track(new THREE.CanvasTexture(c));
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+    const mat = track(new THREE.MeshStandardMaterial({ map: tex, roughness: 0.94 }));
+    mat.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader.replace('#include <uv_vertex>', `
+        #include <uv_vertex>
+        #if defined( USE_MAP ) && defined( USE_INSTANCING )
+          float ax = abs( normal.x ), ay = abs( normal.y ), az = abs( normal.z );
+          if ( ay >= ax && ay >= az ) {
+            vMapUv = vec2( 0.02, 0.02 );   // roofs and soffits stay blank
+          } else {
+            vec3 iS = vec3(
+              length( instanceMatrix[ 0 ].xyz ),
+              length( instanceMatrix[ 1 ].xyz ),
+              length( instanceMatrix[ 2 ].xyz ) );
+            vec2 fs = ax >= az ? vec2( iS.z, iS.y ) : vec2( iS.x, iS.y );
+            vMapUv *= fs / vec2( ${FAB_W.toFixed(2)}, ${FAB_H.toFixed(2)} );
+          }
+        #endif
+      `);
+    };
+    return mat;
+  }
+
   function buildSurround() {
     const inner = span / 2 + GRID_STEP * 0.6;
     const clearOfCity = (x, z) => Math.abs(x) > inner || Math.abs(z) > inner;
@@ -661,9 +781,7 @@ export function createStory(root) {
       const tones = [0xe8dcc4, 0xdccdb0, 0xe3d3bc, 0xcfc0a6, 0xd8cbb4, 0xc4b39a];
       const geo = track(chamferedBox(0.05, 0.07, 2));
       const banks = tones.map((c) => {
-        const m = new THREE.InstancedMesh(geo, track(new THREE.MeshStandardMaterial({
-          color: c, roughness: 0.92,
-        })), 420);
+        const m = new THREE.InstancedMesh(geo, fabricFacade(c), 420);
         m.castShadow = true;
         m.receiveShadow = true;
         m.count = 0;
@@ -697,6 +815,125 @@ export function createStory(root) {
       }
       banks.forEach((m, k) => { m.count = used[k]; m.instanceMatrix.needsUpdate = true; });
     }
+  }
+
+  // -------------------------------------------------------------- street ---
+  // The things that make a street look inhabited: a kerb to stand the pavement
+  // off the road, crossings at the junctions, lamps, and props along the edge.
+  const steam = [];
+  const steamTex = track(blobTexture(0.85, [[0, 1], [0.5, 0.5], [1, 0]]));
+  {
+    const lines = [];
+    for (let i = 0; i <= GRID_COLS; i++) lines.push((i - GRID_COLS / 2) * GRID_STEP);
+
+    // Kerbs — a lip around each block, one shade under the pavement.
+    const kerbMat = track(new THREE.MeshStandardMaterial({ color: 0xcbbb9c, roughness: 1 }));
+    const kerbGeo = track(new THREE.BoxGeometry(1, 0.19, 1));
+    for (const t of towers) {
+      const kerb = new THREE.Mesh(kerbGeo, kerbMat);
+      kerb.scale.set(BLOCK_W + 0.5, 1, BLOCK_W + 0.5);
+      kerb.position.set(t.x, 0.075, t.z);
+      kerb.receiveShadow = true;
+      scene.add(kerb);
+    }
+
+    // Zebra crossings on the approaches to every junction.
+    const zebraGeo = track(new THREE.PlaneGeometry(0.42, 2.1));
+    const zebraMat = track(new THREE.MeshStandardMaterial({ color: 0xf7efdc, roughness: 1 }));
+    const zebras = new THREE.InstancedMesh(zebraGeo, zebraMat, lines.length * lines.length * 16);
+    let zn = 0;
+    const zd = new THREE.Object3D();
+    zd.rotation.x = -Math.PI / 2;
+    for (const cx of lines) {
+      for (const cz of lines) {
+        for (const [ox, oz, turn] of [[0, -1, 0], [0, 1, 0], [-1, 0, 1], [1, 0, 1]]) {
+          for (let k = 0; k < 4; k++) {
+            const off = (k - 1.5) * 0.62;
+            zd.position.set(
+              cx + ox * (ROAD_W / 2 + 1.3) + (turn ? 0 : off), 0.03,
+              cz + oz * (ROAD_W / 2 + 1.3) + (turn ? off : 0),
+            );
+            zd.rotation.z = turn ? Math.PI / 2 : 0;
+            zd.updateMatrix();
+            zebras.setMatrixAt(zn++, zd.matrix);
+          }
+        }
+      }
+    }
+    zebras.count = zn;
+    zebras.receiveShadow = true;
+    scene.add(zebras);
+
+    // Lamp posts along every kerb, with a warm globe.
+    const postGeo = track(new THREE.CylinderGeometry(0.045, 0.06, 2.6, 6));
+    const armGeo = track(new THREE.SphereGeometry(0.13, 8, 6));
+    const postMat = track(new THREE.MeshStandardMaterial({ color: 0x4e4a44, roughness: 0.6, metalness: 0.3 }));
+    const globeMat = track(new THREE.MeshStandardMaterial({
+      color: 0xfff4dc, emissive: 0xffd79a, emissiveIntensity: 0.55, roughness: 0.4,
+    }));
+    const spots = [];
+    for (const t of towers) {
+      const e = BLOCK_W / 2 - 0.35;
+      spots.push([t.x - e, t.z - e], [t.x + e, t.z + e]);
+    }
+    const posts = new THREE.InstancedMesh(postGeo, postMat, spots.length);
+    const globes = new THREE.InstancedMesh(armGeo, globeMat, spots.length);
+    posts.castShadow = true;
+    const pd = new THREE.Object3D();
+    spots.forEach(([x, z], i) => {
+      pd.position.set(x, 1.46, z);
+      pd.updateMatrix();
+      posts.setMatrixAt(i, pd.matrix);
+      pd.position.y = 2.85;
+      pd.updateMatrix();
+      globes.setMatrixAt(i, pd.matrix);
+    });
+    scene.add(posts, globes);
+
+    // Street furniture along the kerbs, placed deterministically: planters with
+    // a clipped hedge, benches, and bins.
+    const propBox = track(new THREE.BoxGeometry(1, 1, 1));
+    const stoneMat = track(new THREE.MeshStandardMaterial({ color: 0xd6c7a8, roughness: 1 }));
+    const hedgeMat = track(new THREE.MeshStandardMaterial({ color: 0x7d9b6a, roughness: 1, flatShading: true }));
+    const woodMat = track(new THREE.MeshStandardMaterial({ color: 0xa9825c, roughness: 0.9 }));
+    const metalMat = track(new THREE.MeshStandardMaterial({ color: 0x5b5750, roughness: 0.6, metalness: 0.35 }));
+
+    const sites = [];
+    towers.forEach((t, i) => {
+      const e = BLOCK_W / 2 - 0.4;
+      sites.push({ x: t.x + e, z: t.z - e * 0.35, kind: i % 3 });
+      sites.push({ x: t.x - e * 0.35, z: t.z + e, kind: (i + 2) % 3 });
+    });
+
+    const planters = new THREE.InstancedMesh(propBox, stoneMat, sites.length);
+    const hedges = new THREE.InstancedMesh(propBox, hedgeMat, sites.length);
+    const seats = new THREE.InstancedMesh(propBox, woodMat, sites.length);
+    const bins = new THREE.InstancedMesh(propBox, metalMat, sites.length);
+    for (const m of [planters, hedges, seats, bins]) { m.castShadow = true; m.count = 0; }
+    const n = [0, 0, 0, 0];
+    const pd2 = new THREE.Object3D();
+    const put = (mesh, slot, x, y, z, sx, sy, sz, ry) => {
+      pd2.position.set(x, y, z);
+      pd2.scale.set(sx, sy, sz);
+      pd2.rotation.y = ry;
+      pd2.updateMatrix();
+      mesh.setMatrixAt(n[slot]++, pd2.matrix);
+    };
+    sites.forEach((p, i) => {
+      const turn = (i % 2) * Math.PI / 2;
+      if (p.kind === 0) {                       // planter with a hedge in it
+        put(planters, 0, p.x, 0.34, p.z, 1.05, 0.36, 1.05, turn);
+        put(hedges, 1, p.x, 0.62, p.z, 0.86, 0.34, 0.86, turn);
+      } else if (p.kind === 1) {                // bench
+        put(seats, 2, p.x, 0.38, p.z, 1.5, 0.09, 0.42, turn);
+        put(seats, 2, p.x - Math.sin(turn) * 0.18, 0.55, p.z - Math.cos(turn) * 0.18, 1.5, 0.36, 0.08, turn);
+      } else {                                  // bin
+        put(bins, 3, p.x, 0.36, p.z, 0.42, 0.56, 0.42, turn);
+      }
+    });
+    planters.count = n[0]; hedges.count = n[1]; seats.count = n[2]; bins.count = n[3];
+    scene.add(planters, hedges, seats, bins);
+
   }
 
   // ---------------------------------------------------------------- trees ---
@@ -804,7 +1041,11 @@ export function createStory(root) {
     return mesh;
   }
 
+  const maxAniso = renderer.capabilities.getMaxAnisotropy();
   const boxGeo = track(chamferedBox());
+  // Same volume, UVs pre-squeezed for the 1.34 : 0.66 slab footprint so its
+  // short faces get windows of the same size as its long ones.
+  const slabGeo = track(boxUV(chamferedBox(), 0.66 / 1.34));
   const cylGeo = track(new THREE.CylinderGeometry(0.5, 0.5, 1, 40, 1));
   const edgeGeo = track(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)));
 
@@ -883,14 +1124,25 @@ export function createStory(root) {
   }
   const picks = [];
 
-  // Flat matte volumes, shaded by height: each storey is a little lighter than
-  // the one below it. A window grid at this scale was sub-pixel speckle; a
-  // value gradient is what actually gives a massed form depth.
+  // The texture carries the hue — wall, glazing, sill — and the material colour
+  // carries only the value gradient, each storey a shade lighter than the one
+  // below it. Keeping those two jobs apart is what stops a dark brick style
+  // going to mud while a limestone one stays paper-white.
+  const WIN_W = 2.4;   // world units per four windows
+  const WIN_H = 0.62;  // world units per window row
+
   function facade(tower, width, height, depth, lift) {
     const round = tower.style.plan === 'round';
-    const colour = new THREE.Color(tower.style.wall).multiplyScalar(0.88 + 0.16 * lift);
-    const mesh = new THREE.Mesh(round ? cylGeo : boxGeo, track(new THREE.MeshStandardMaterial({
-      color: colour, roughness: 0.82, metalness: 0.02, flatShading: false,
+    const colour = new THREE.Color().setScalar(0.84 + 0.16 * lift);
+    const tex = track(tower.tex.clone());
+    tex.needsUpdate = true;
+    tex.anisotropy = maxAniso;
+    // A cylinder's u runs the whole circumference, not one face.
+    const across = round ? width * Math.PI : width;
+    tex.repeat.set(Math.max(1, Math.round(across / WIN_W)), Math.max(1, Math.round(height / WIN_H)));
+    const geo = round ? cylGeo : (tower.style.plan === 'slab' ? slabGeo : boxGeo);
+    const mesh = new THREE.Mesh(geo, track(new THREE.MeshStandardMaterial({
+      color: colour, map: tex, roughness: 0.82, metalness: 0.02,
     })));
     mesh.scale.set(width, height, depth);
     mesh.castShadow = true;
@@ -913,6 +1165,10 @@ export function createStory(root) {
   }
 
   for (const t of towers) {
+    t.tex = track(facadeTexture(t.style));
+    t.trim = track(new THREE.MeshStandardMaterial({
+      color: new THREE.Color(t.style.wall).multiplyScalar(0.7), roughness: 0.85,
+    }));
     const group = new THREE.Group();
     group.position.set(t.x, 0, t.z);
     scene.add(group);
@@ -952,9 +1208,21 @@ export function createStory(root) {
       el.innerHTML = `<b>${f.deal.target ? nameAt(f.deal.target, f.deal.year) : f.deal.title}</b>`
         + `<i>${yr(f.deal.year)} · ${money(f.deal.valueB)}</i>`;
       f.label = new CSS2DObject(el);
-      f.label.position.set(f.dx + 1.9, 0.16 + f.base + f.h / 2, f.dz - 0.2);
+      f.label.position.set(f.dx + 0.7, 0.16 + f.base + f.h / 2, f.dz - 0.2);
       f.label.visible = false;
       group.add(f.label);
+
+      // A string course at the head of each storey that is tall enough to carry
+      // one. Strong horizontal banding is what stops a stack of blocks reading
+      // as a stack of blocks.
+      if (f.h > 0.72) {
+        const band = new THREE.Mesh(t.style.plan === 'round' ? cylGeo : boxGeo, t.trim);
+        band.scale.set(dims.x + 0.13, 0.09, dims.z + 0.13);
+        band.castShadow = true;
+        band.receiveShadow = true;
+        group.add(band);
+        f.band = band;
+      }
     }
 
     // The crown: a parapet plus whatever the style tops itself off with.
@@ -1020,6 +1288,33 @@ export function createStory(root) {
     t.labelEl = el;
     t.label.visible = false;
     group.add(t.label);
+  }
+
+  // Rooftop plant, and a wisp of steam from a couple of them, which is most of
+  // what makes a roofline look like a roof rather than a lid.
+  {
+    const ventGeo = track(new THREE.BoxGeometry(1, 1, 1));
+    const ventMat = track(new THREE.MeshStandardMaterial({ color: 0x9a958c, roughness: 0.8, metalness: 0.2 }));
+    towers.forEach((t, i) => {
+    if (t.floors.length < 2) return;
+    const w = t.topWidth;
+    for (let k = 0; k < 3; k++) {
+      const vent = new THREE.Mesh(ventGeo, ventMat);
+      const s = 0.26 + ((i * 5 + k * 3) % 4) * 0.09;
+      vent.scale.set(s, s * (0.6 + (k % 2) * 0.5), s);
+      vent.position.set((k - 1) * w * 0.26, 0, ((i + k) % 3 - 1) * w * 0.22);
+      vent.castShadow = true;
+      t.roof.add(vent);
+      vent.position.y = 0.18 + vent.scale.y / 2;
+    }
+    if (i % 4 !== 1) return;
+    const puff = new THREE.Sprite(track(new THREE.SpriteMaterial({
+      map: steamTex, transparent: true, opacity: 0.34, depthWrite: false,
+    })));
+    puff.scale.setScalar(2.2);
+    t.roof.add(puff);
+    steam.push({ node: puff, phase: i * 0.7, base: 0.4 });
+    });
   }
 
   // ------------------------------------------------------------- monument --
@@ -1146,12 +1441,20 @@ export function createStory(root) {
       let top = PLINTH_H;
       for (const f of t.floors) {
         const g = Math.min(1, Math.max(0, (state.year - f.deal.year) / RISE_YEARS));
-        if (g <= 0) { f.mesh.visible = false; continue; }
+        if (g <= 0) {
+          f.mesh.visible = false;
+          if (f.band) f.band.visible = false;
+          continue;
+        }
         const k = easeOut(g);
         f.mesh.visible = true;
         f.mesh.scale.y = f.h * k;
         f.mesh.position.y = 0.16 + f.base + (f.h * k) / 2;
         top = f.base + f.h * k;
+        if (f.band) {
+          f.band.visible = k > 0.98;
+          f.band.position.y = 0.16 + f.base + f.h * k - 0.045;
+        }
       }
       t.roof.position.y = 0.16 + top + 0.09;
       for (const p of t.ghostParts) p.node.visible = state.year >= p.deal.year;
@@ -1168,6 +1471,13 @@ export function createStory(root) {
   }
 
   function traffic(dt) {
+    for (const s of steam) {
+      s.phase += dt * 0.55;
+      const t = s.phase % 1;
+      s.node.position.y = s.base + t * 3.4;
+      s.node.scale.setScalar(1.4 + t * 2.6);
+      s.node.material.opacity = 0.32 * (1 - t) * Math.min(1, t * 5);
+    }
     for (const c of clouds) {
       c.a += c.speed * dt;
       c.node.position.set(Math.sin(c.a) * c.r, c.node.position.y, Math.cos(c.a) * c.r);
@@ -1196,16 +1506,53 @@ export function createStory(root) {
   let stageW = 1;
   let stageH = 1;
 
-  /** The narration panel, the deal feed and the transport bar own their corners;
-   *  a label that lands on one is dropped rather than printed over it. */
-  function inChrome(sx, sy) {
-    if (sy < 66 || sy > stageH - 96) return true;
-    if (stageW > 860 && sx > stageW - 360 && sy < 400) return true;
-    if (sx < 590 && sy > stageH - 436) return true;
+  /** The narration panel, the deal feed, the deal card and the transport bar own
+   *  their corners; a label that would land on one is dropped rather than
+   *  printed over it. The panels are measured rather than guessed at — the deal
+   *  card in particular moves and resizes with its contents, and hard-coded
+   *  rectangles are exactly how labels ended up printed across it. */
+  const chromeEls = ['#story-top', '.story-top', '#story-panel', '#story-feed', '#story-card', '.story-bar']
+    .map((sel) => root.querySelector(sel))
+    .filter((el, i, all) => el && all.indexOf(el) === i);
+  let chromeRects = [];
+  let chromeAt = -1e9;
+
+  function measureChrome(now) {
+    if (now - chromeAt < 220) return;
+    chromeAt = now;
+    const base = root.getBoundingClientRect();
+    chromeRects = [];
+    for (const el of chromeEls) {
+      if (el.hidden) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) continue;
+      chromeRects.push({
+        x0: r.left - base.left - 8, y0: r.top - base.top - 8,
+        x1: r.right - base.left + 8, y1: r.bottom - base.top + 8,
+      });
+    }
+  }
+
+  /** Labels are drawn centred on their anchor, so the test is box against box. */
+  function inChrome(sx, sy, hw, hh) {
+    for (const r of chromeRects) {
+      if (sx + hw > r.x0 && sx - hw < r.x1 && sy + hh > r.y0 && sy - hh < r.y1) return true;
+    }
     return false;
   }
 
-  function placeLabels() {
+  /** Measured once, the first frame the label is actually on screen — the sizes
+   *  are set by the text, not the viewport, so they never need re-reading. */
+  function sizeOf(store, el, w, h) {
+    if (!store.lw && el.offsetWidth) {
+      store.lw = el.offsetWidth;
+      store.lh = el.offsetHeight;
+    }
+    return store.lw ? store : { lw: w, lh: h };
+  }
+
+  function placeLabels(now = performance.now()) {
+    measureChrome(now);
     const ch = chapters[state.chapter];
     const show = new Set(state.selected ? [state.selected] : ch.active);
     if (state.hovered) show.add(state.hovered);
@@ -1225,18 +1572,23 @@ export function createStory(root) {
           f.label.visible = false;
           continue;
         }
+        const size = sizeOf(f, f.label.element, 150, 36);
         floorCandidates.push({
           f,
-          sx: (projected.x * 0.5 + 0.5) * stageW,
+          // The box hangs to the right of the anchor — see .floor-label.
+          sx: (projected.x * 0.5 + 0.5) * stageW + size.lw / 2 + 4,
           sy: (-projected.y * 0.5 + 0.5) * stageH,
+          hw: size.lw / 2 + 5,
+          hh: size.lh / 2 + 5,
         });
       }
     }
     floorCandidates.sort((a, b) => b.f.h - a.f.h);
     floorPlaced.length = 0;
     for (const c of floorCandidates) {
-      const clash = inChrome(c.sx, c.sy)
-        || floorPlaced.some((p) => Math.abs(p.sy - c.sy) < 36 && Math.abs(p.sx - c.sx) < 200);
+      const clash = inChrome(c.sx, c.sy, c.hw, c.hh)
+        || floorPlaced.some((p) => Math.abs(p.sx - c.sx) < p.hw + c.hw
+          && Math.abs(p.sy - c.sy) < p.hh + c.hh);
       c.f.label.visible = !clash;
       if (!clash) floorPlaced.push(c);
     }
@@ -1252,10 +1604,13 @@ export function createStory(root) {
         t.label.visible = false;
         continue;
       }
+      const size = sizeOf(t, t.labelEl, 150, 42);
       candidates.push({
         t,
         sx: (projected.x * 0.5 + 0.5) * stageW,
         sy: (-projected.y * 0.5 + 0.5) * stageH,
+        hw: size.lw / 2 + 7,
+        hh: size.lh / 2 + 9,   // room for the stem under the box
         depth: camera.position.distanceToSquared(worldPos),
         priority: t === state.hovered || t === state.selected ? -1 : 0,
       });
@@ -1264,8 +1619,9 @@ export function createStory(root) {
     candidates.sort((a, b) => a.priority - b.priority || a.depth - b.depth);
     placed.length = 0;
     for (const c of candidates) {
-      const clash = inChrome(c.sx, c.sy)
-        || placed.some((p) => Math.abs(p.sy - c.sy) < 46 && Math.abs(p.sx - c.sx) < 176);
+      const clash = inChrome(c.sx, c.sy, c.hw, c.hh)
+        || placed.some((p) => Math.abs(p.sx - c.sx) < p.hw + c.hw
+          && Math.abs(p.sy - c.sy) < p.hh + c.hh);
       c.t.label.visible = !clash;
       c.t.labelEl.classList.toggle('is-focus', c.priority < 0);
       if (!clash) placed.push(c);
