@@ -545,3 +545,64 @@ addEventListener('resize', () => {
 
 drawCurve();
 drawLineage();
+
+// ------------------------------------------------------------- bubble map --
+// The default view of the lineage: containment for "inside whom", the clock for
+// "when". The thread chart stays one click away as the precise reference.
+(function bubbles() {
+  const holder = $('#bubble-holder');
+  if (!holder) return;
+  const view = $('#bubble-view');
+  const frame = document.querySelector('.lineage-frame');
+  const legend = $('#ln-legend');
+  const count = $('#ln-count');
+  const scrub = $('#bub-scrub');
+  const playBtn = $('#bub-play');
+  const yearOut = $('#bub-year');
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let map = null;
+
+  function showYear(y) {
+    yearOut.textContent = yr(y);
+    scrub.value = String(y);
+  }
+
+  import('./bubbles.js').then(({ createBubbles }) => {
+    map = createBubbles(document);
+    map.on('year', showYear);
+    showYear(map.year);
+    if (!reduceMotion) map.play();
+    playBtn.textContent = map.playing ? 'Pause' : 'Play';
+
+    scrub.addEventListener('input', () => {
+      map.pause();
+      map.setYear(+scrub.value);
+      showYear(+scrub.value);
+      playBtn.textContent = 'Play';
+    });
+    playBtn.addEventListener('click', () => {
+      if (map.playing) map.pause(); else map.play();
+      playBtn.textContent = map.playing ? 'Pause' : 'Play';
+    });
+    addEventListener('resize', () => { clearTimeout(bt); bt = setTimeout(() => map.resize(), 180); });
+  }).catch(() => {
+    // No bubble view — fall back to the chart that never needed JS modules.
+    pick('threads');
+    $('.viewswitch').hidden = true;
+  });
+
+  let bt;
+  function pick(which) {
+    const bub = which === 'bubbles';
+    view.hidden = !bub;
+    frame.hidden = bub;
+    legend.hidden = bub;
+    count.hidden = bub;
+    $('#vs-bubbles').setAttribute('aria-pressed', String(bub));
+    $('#vs-threads').setAttribute('aria-pressed', String(!bub));
+    if (bub) { map?.resize(); } else { map?.pause(); if (playBtn) playBtn.textContent = 'Play'; }
+    if (!bub) drawLineage();
+  }
+  $('#vs-bubbles').addEventListener('click', () => pick('bubbles'));
+  $('#vs-threads').addEventListener('click', () => pick('threads'));
+})();

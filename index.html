@@ -98,11 +98,11 @@
       <div class="section-head">
         <h2>Where all 66 companies ended up</h2>
         <p class="section-intro">
-          Every company is one horizontal thread, named on the left. Time runs left to right. When a
-          company was bought, its thread sweeps into the thread that bought it and stops there — so
-          each block below is one surviving company and everything now inside it. Threads still
-          independent today run all the way to the right edge and are
-          <strong class="ink-alive">drawn in blue</strong>; everything absorbed is grey.
+          Every company is one bubble, sized by the price paid for it, sitting inside the bubble of
+          whoever owned it in the year you are looking at. Play the clock and companies slide into
+          their buyer as each deal closes — sixty-six separate bubbles in 1983, a handful of clusters
+          by 2026. Companies <strong class="ink-alive">still independent</strong> are blue; everything
+          absorbed is grey. The thread chart is the precise reference, one click away.
         </p>
       </div>
 
@@ -121,16 +121,38 @@
         </div>
       </div>
 
-      <div class="key" id="ln-legend" role="group" aria-label="How to read the chart"></div>
+      <div class="viewswitch" role="group" aria-label="Choose a view">
+        <button type="button" class="vs-btn" id="vs-bubbles" aria-pressed="true">Bubbles</button>
+        <button type="button" class="vs-btn" id="vs-threads" aria-pressed="false">Threads</button>
+      </div>
 
-      <div class="lineage-frame">
+      <figure class="card bubble-card" id="bubble-view">
+        <div class="bubble-holder" id="bubble-holder">
+          <div class="bub-tip" id="bub-tip" hidden></div>
+        </div>
+        <div class="bubble-bar">
+          <button class="bub-play" id="bub-play" type="button">Play</button>
+          <output class="bub-year" id="bub-year">1983</output>
+          <input type="range" id="bub-scrub" min="1983" max="2026.6" step="0.1" value="1983"
+                 aria-label="Year" />
+        </div>
+        <figcaption>
+          Each bubble is one company, sized by the price paid for it, sitting inside whoever owned
+          it that year. Drag the year and a company slides into the buyer as its deal closes.
+          Hover any bubble for its name, dates and who took it.
+        </figcaption>
+      </figure>
+
+      <div class="key" id="ln-legend" role="group" aria-label="How to read the chart" hidden></div>
+
+      <div class="lineage-frame" hidden>
         <div class="lineage-rail" id="ln-rail" aria-hidden="true"></div>
         <div class="lineage-scroll" id="ln-scroll">
           <div class="lineage-axis" id="ln-axis-static" aria-hidden="true"></div>
           <div class="lineage-body" id="ln-body"></div>
         </div>
       </div>
-      <p class="chart-foot" id="ln-count"></p>
+      <p class="chart-foot" id="ln-count" hidden></p>
     </section>
 
     <section id="trunks" class="section">

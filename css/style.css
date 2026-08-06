@@ -766,3 +766,73 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
   font-variant-numeric: tabular-nums; text-transform: uppercase;
   letter-spacing: 0.06em;
 }
+
+/* ------------------------------------------------------- bubble map ---- */
+.viewswitch {
+  display: inline-flex; gap: 2px; margin: 0 0 16px;
+  padding: 2px; border-radius: 999px; background: var(--band);
+  box-shadow: var(--ring);
+}
+.vs-btn {
+  font: inherit; font-size: 0.85rem; cursor: pointer; min-height: 32px;
+  padding: 4px 18px; border: 0; border-radius: 999px;
+  background: transparent; color: var(--ink-2);
+}
+.vs-btn[aria-pressed='true'] {
+  background: var(--surface); color: var(--ink); font-weight: 600;
+  box-shadow: var(--ring), var(--lift1);
+}
+.vs-btn:hover { color: var(--ink); }
+
+.bubble-card[hidden] { display: none; }
+.bubble-holder { position: relative; }
+.bub-svg { display: block; width: 100%; height: auto; touch-action: pan-y; }
+
+.bub-hull { fill: var(--alive-wash); stroke: var(--border); stroke-width: 1; }
+.bub {
+  fill: var(--dead); fill-opacity: 0.55; stroke: var(--surface); stroke-width: 1;
+  transition: fill-opacity 0.15s;
+}
+.bub.is-trunk { fill: var(--alive); fill-opacity: 0.92; }
+.bub.is-hover { fill-opacity: 1; stroke: var(--ink); stroke-width: 1.5; }
+.bub-name {
+  font-size: 12.5px; font-weight: 640; fill: var(--ink); text-anchor: middle;
+  paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round;
+}
+.bub-sub {
+  font-size: 10.5px; fill: var(--muted); text-anchor: middle;
+  font-variant-numeric: tabular-nums;
+  paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round;
+}
+
+.bub-tip {
+  position: absolute; z-index: 4; pointer-events: none; max-width: 20rem;
+  padding: 9px 12px 10px; border-radius: var(--r1);
+  background: var(--surface); box-shadow: var(--ring), var(--lift2);
+  font-size: 0.82rem; line-height: 1.45;
+}
+.bub-tip[hidden] { display: none; }
+.bub-tip b { display: block; font-size: 0.92rem; font-weight: 640; }
+.bub-tip span { display: block; color: var(--ink-2); }
+
+.bubble-bar {
+  display: flex; align-items: center; gap: 14px; margin-top: 12px;
+  padding-top: 14px; border-top: 1px solid var(--border);
+}
+.bub-play {
+  font: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+  min-width: 78px; min-height: 34px; padding: 5px 16px;
+  border: 1px solid var(--alive); border-radius: 999px;
+  background: var(--alive-wash); color: var(--ink);
+}
+.bub-play:hover { background: var(--alive); color: #fff; }
+.bub-year {
+  font-size: 1.15rem; font-weight: 660; font-variant-numeric: tabular-nums;
+  min-width: 3.6ch; color: var(--ink);
+}
+#bub-scrub { flex: 1; accent-color: var(--alive); min-height: 30px; }
+
+@media (max-width: 640px) {
+  .bubble-bar { flex-wrap: wrap; }
+  #bub-scrub { order: 3; flex-basis: 100%; }
+}

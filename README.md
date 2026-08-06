@@ -12,9 +12,17 @@ breakup in history — into a long-distance carrier and seven regional "Baby Bel
 Over the next four decades more than sixty companies and over a trillion dollars of
 deals slowly put the pieces back together into a handful of giants.
 
-The page tells that story twice, and both tellings read from the same dataset:
+The page tells that story three ways, all reading from the same dataset:
 
-**The lineage chart** is the reference. Every company is one horizontal thread with
+**The bubble map** is the default view. Every company is one bubble, sized by the
+price paid for it, sitting inside the bubble of whoever owned it in the year on
+the clock. Play it and companies slide into their buyer as each deal closes —
+sixty-six separate bubbles in 1983, a handful of clusters by 2026. Containment
+answers "who ended up inside whom" without tracing anything. The layout is one
+continuous relaxation rather than a fresh pack per frame, so a merger reads as a
+movement you can follow rather than everything teleporting on every tick.
+
+**The lineage chart** is the precise reference, one click away. Every company is one horizontal thread with
 its name in a fixed left gutter, time runs left to right, and a company that was
 bought has its thread sweep into the thread that bought it and stop there. Threads
 are grouped by the trunk they ended up inside, so each block is one surviving
@@ -23,13 +31,13 @@ while the chart is in view. Threads still independent today are drawn in blue an
 run to the right edge; everything absorbed is neutral grey; blocked deals are the
 one reserved red.
 
-**Story mode** is the same data as a city, in eight narrated chapters. Every company
+**Story mode** is the same data as a city at night, in eight narrated chapters. Every company
 still standing today gets a building; every acquisition it made is a storey, stacked
 in the order the deals closed, with storey height set by the announced price. A
 building's total height is therefore the money it spent buying its way to where it
 is — AT&T's $408B tower stands over everything else on the plaza. Press play and the
 city builds itself between 1983 and 2026: storeys slide into place as deals close,
-traffic runs the streets, and the sun casts the whole thing across the pavement.
+traffic runs the streets, and lamplight pools on the pavement.
 
 Deals that never closed are there too, as ghost storeys — red outlines hanging beside
 the building at the height they would have occupied. WorldCom's $129B bid for Sprint
@@ -119,6 +127,7 @@ All data lives in [`js/data.js`](js/data.js) — corrections welcome via PR.
 ```
 js/data.js      the dataset — companies, deals, chapters
 js/model.js     derives the graph: who ended up inside whom, thread extents, totals
+js/bubbles.js   the bubble map on a clock (lazy-loaded)
 js/lineage.js   the SVG lineage chart
 js/charts.js    the independent-company curve and the survivor bars
 js/table.js     the deal ledger
