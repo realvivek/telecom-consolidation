@@ -1,0 +1,124 @@
+# Deploys the site to Render.
+#
+# RENDER_API_KEY is a repository secret, so it is only readable from inside a
+# workflow run — which is why the deploy lives here rather than being run by
+# hand. The job is idempotent: the first run creates the static site, every run
+# after that just triggers a deploy of it.
+#
+# The service settings below mirror render.yaml. That file is read only by
+# Render Blueprints, and a service created through the REST API does not see it,
+# so if you change one, change the other.
+name: Deploy to Render
+
+on:
+  push:
+    branches:
+      - main
+      - claude/website-readability-visualization-vljou8
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: render-deploy
+  cancel-in-progress: false
+
+env:
+  SERVICE_NAME: telecom-consolidation
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          BRANCH: ${{ github.ref_name }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${RENDER_API_KEY:-}" ]; then
+            echo "::error::RENDER_API_KEY is not set on this repository."
+            echo "Add it under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+          API=https://api.render.com/v1
+          auth=(-H "Authorization: Bearer $RENDER_API_KEY" -H "Accept: application/json")
+
+          # curl that fails loudly on a non-2xx rather than piping an error body
+          # into jq and reporting something misleading.
+          api() {
+            local method=$1 path=$2 payload=${3:-}
+            local out status response
+            if [ -n "$payload" ]; then
+              out=$(curl -sS -w '\n%{http_code}' -X "$method" "${auth[@]}" \
+                -H 'Content-Type: application/json' -d "$payload" "$API$path")
+            else
+              out=$(curl -sS -w '\n%{http_code}' -X "$method" "${auth[@]}" "$API$path")
+            fi
+            status=$(printf '%s' "$out" | tail -n1)
+            response=$(printf '%s' "$out" | sed '$d')
+            if [ "${status:0:1}" != "2" ]; then
+              echo "::error::$method $path returned HTTP $status"
+              # Render echoes the request back on 4xx; it never contains the key.
+              printf '%s\n' "$response" >&2
+              return 1
+            fi
+            printf '%s' "$response"
+          }
+
+          owners=$(api GET /owners)
+          owner_id=$(printf '%s' "$owners" | jq -r '.[0].owner.id // empty')
+          if [ -z "$owner_id" ]; then
+            echo "::error::The API key is valid but belongs to no workspace."
+            exit 1
+          fi
+          echo "Workspace: $(printf '%s' "$owners" | jq -r '.[0].owner.name')"
+
+          service=$(api GET "/services?type=static_site&name=$SERVICE_NAME&limit=20" \
+            | jq -r --arg n "$SERVICE_NAME" 'map(.service | select(.name == $n)) | .[0] // empty')
+
+          if [ -z "$service" ]; then
+            echo "No static site named $SERVICE_NAME — creating one from $BRANCH."
+            payload=$(jq -n \
+              --arg name "$SERVICE_NAME" --arg owner "$owner_id" \
+              --arg repo "$REPO_URL" --arg branch "$BRANCH" \
+              '{
+                type: "static_site", name: $name, ownerId: $owner,
+                repo: $repo, branch: $branch, autoDeploy: "yes",
+                serviceDetails: {
+                  buildCommand: "echo no build step — static ES modules",
+                  publishPath: ".",
+                  headers: [
+                    { path: "/vendor/*", name: "Cache-Control",
+                      value: "public, max-age=31536000, immutable" },
+                    { path: "/*", name: "Cache-Control",
+                      value: "public, max-age=0, must-revalidate" }
+                  ]
+                }
+              }')
+            created=$(api POST /services "$payload")
+            service=$(printf '%s' "$created" | jq -r '.service')
+            echo "Created — the first deploy starts automatically."
+          else
+            wired=$(printf '%s' "$service" | jq -r '.branch')
+            if [ "$wired" != "$BRANCH" ]; then
+              echo "::warning::The service deploys '$wired', but this run is on '$BRANCH'."
+            fi
+            id=$(printf '%s' "$service" | jq -r '.id')
+            api POST "/services/$id/deploys" '{"clearCache":"do_not_clear"}' > /dev/null
+            echo "Deploy triggered for $wired."
+          fi
+
+          url=$(printf '%s' "$service" | jq -r '.serviceDetails.url // empty')
+          id=$(printf '%s' "$service" | jq -r '.id')
+          {
+            echo "### Render"
+            echo ""
+            echo "- Service: \`$SERVICE_NAME\` (\`$id\`)"
+            [ -n "$url" ] && echo "- URL: $url"
+            echo "- Dashboard: https://dashboard.render.com/static/$id"
+          } >> "$GITHUB_STEP_SUMMARY"
