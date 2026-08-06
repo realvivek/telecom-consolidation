@@ -210,20 +210,29 @@
 
     <header class="story-top">
       <span class="story-mark">The Consolidation</span>
-      <span class="story-clock" id="story-clock">1983</span>
       <span class="story-spacer"></span>
       <button class="story-btn" id="story-reset" type="button">Recentre</button>
+      <a class="story-btn" href="#top" id="story-read">Read the full story</a>
       <button class="story-btn story-btn--close" id="story-close" type="button">Close <kbd>Esc</kbd></button>
     </header>
 
+    <!-- One card carries the whole narration: which chapter, what year it is
+         now, what the chapter says, and the deals closing as you watch. Two
+         panels competing on opposite corners was the thing nobody could read. -->
     <section class="story-panel" id="story-panel" aria-live="polite">
-      <p class="story-kicker" id="story-kicker"></p>
+      <div class="sp-rule" aria-hidden="true"><span id="story-fill"></span></div>
+      <header class="sp-head">
+        <span class="sp-chapter" id="story-kicker"></span>
+        <span class="sp-clock" id="story-clock">1983</span>
+      </header>
       <h2 id="story-title"></h2>
       <p class="story-body" id="story-body"></p>
+      <div class="sp-deals">
+        <span class="sp-deals-label">Closing now</span>
+        <ol class="story-feed" id="story-feed" aria-live="polite"></ol>
+      </div>
       <p class="story-hint">Drag to orbit · click a building to walk up to it. Only height is data — the architecture is Chicago.</p>
     </section>
-
-    <ol class="story-feed" id="story-feed" aria-live="polite"></ol>
 
     <div class="story-card" id="story-card" hidden></div>
 

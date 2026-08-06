@@ -438,19 +438,24 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
 .btn-sub { font-weight: 400; opacity: 0.82; font-size: 0.82rem; }
 
 /* ----------------------------------------------------- story mode ---- */
-/* A daytime scene, so the chrome is light too — dark glass over a bright sky
-   is the thing that makes these overlays tiring to read. */
+/* A night scene, so the chrome is night too: one dark plane, hairline rules
+   instead of drawn boxes, a serif display face against mono labels. Borrowed
+   from the portfolio, which is the house style these projects share. */
 .story {
   position: fixed; inset: 0; z-index: 90;
-  background: #eadfcd; color: #2a2620;
-  color-scheme: light;
-  --story-surface: rgba(255, 255, 255, 0.9);
-  --story-ink: #2a2620;
-  --story-ink-2: #6b6156;
-  --story-line: rgba(70, 55, 38, 0.09);
-  --story-shadow: 0 1px 1px rgba(66, 50, 32, 0.05), 0 6px 20px rgba(66, 50, 32, 0.13);
-  --story-lift: 0 2px 4px rgba(66, 50, 32, 0.06), 0 14px 40px rgba(66, 50, 32, 0.16);
-  --story-blur: blur(18px) saturate(1.5);
+  background: #070a10; color: #dfe6ef;
+  color-scheme: dark;
+  --s-ink:    #e8eef6;
+  --s-ink-2:  #97a6b8;
+  --s-ink-3:  #5f6f83;
+  --s-panel:  rgba(13, 18, 26, 0.86);
+  --s-raise:  rgba(24, 32, 44, 0.9);
+  --s-line:   rgba(180, 200, 224, 0.16);
+  --s-line-2: rgba(180, 200, 224, 0.08);
+  --s-accent: #7fb0e8;
+  --s-blur:   blur(20px) saturate(1.25);
+  --s-serif:  Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+  --s-mono:   ui-monospace, 'SF Mono', 'IBM Plex Mono', Menlo, monospace;
 }
 .story[hidden] { display: none; }
 .story-stage { position: absolute; inset: 0; }
@@ -458,179 +463,248 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
 .story-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 
 /* Labels are annotation, not interface: one flat plane, a hairline edge and a
-   single soft drop, no blur halo and no thick pill. The name sits on the
-   baseline and the figures hang under it on their own tabular line. */
+   single soft drop. Dark now, so they sit on the city instead of punching
+   holes in it. */
 .tower-label {
   position: relative; display: block; white-space: nowrap; text-align: center;
-  background: rgba(255, 255, 255, 0.94);
-  border: 1px solid rgba(41, 33, 22, 0.1);
-  border-radius: 9px; padding: 6px 11px 7px;
-  box-shadow: 0 1px 1px rgba(66, 50, 32, 0.06), 0 8px 22px rgba(66, 50, 32, 0.13);
+  background: rgba(10, 14, 20, 0.82); backdrop-filter: blur(8px);
+  border: 1px solid var(--s-line);
+  border-radius: 4px; padding: 6px 11px 7px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
-/* A hairline stem down to the roof, so a label is never ambiguous about which
-   building it belongs to — the thing that made the old ones read as clutter. */
 .tower-label::after {
   content: ''; position: absolute; left: 50%; top: 100%;
   width: 1px; height: 15px; margin-left: -0.5px;
-  background: linear-gradient(rgba(70, 55, 38, 0.42), rgba(70, 55, 38, 0));
+  background: linear-gradient(rgba(180, 200, 224, 0.4), rgba(180, 200, 224, 0));
 }
 .tower-label b {
-  display: block; font-size: 12.5px; font-weight: 600; color: var(--story-ink);
+  display: block; font-size: 12.5px; font-weight: 600; color: var(--s-ink);
   letter-spacing: -0.008em; line-height: 1.15;
 }
 .tower-label i {
-  display: block; font-style: normal; font-size: 10.5px; margin-top: 2px;
-  color: var(--story-ink-2); font-variant-numeric: tabular-nums; line-height: 1.15;
+  display: block; font-style: normal; font-size: 10px; margin-top: 3px;
+  color: var(--s-ink-2); font-family: var(--s-mono);
+  font-variant-numeric: tabular-nums; line-height: 1.15; letter-spacing: 0.02em;
 }
-.tower-label.is-focus {
-  background: rgba(30, 27, 22, 0.95); border-color: rgba(255, 255, 255, 0.14);
-}
+.tower-label.is-focus { background: rgba(127, 176, 232, 0.16); border-color: rgba(127, 176, 232, 0.55); }
 .tower-label.is-focus b { color: #fff; }
-.tower-label.is-focus i { color: rgba(255, 255, 255, 0.66); }
-.tower-label.is-focus::after { background: linear-gradient(rgba(30, 27, 22, 0.55), rgba(30, 27, 22, 0)); }
+.tower-label.is-focus i { color: #bcd6f2; }
 .tower-label--monument { max-width: 24rem; white-space: normal; }
-.tower-label--monument i { white-space: normal; line-height: 1.4; margin-top: 4px; }
+.tower-label--monument i { white-space: normal; line-height: 1.4; margin-top: 4px; font-family: inherit; letter-spacing: 0; }
 .tower-label--monument::after { display: none; }
 
-/* Storey names read as a stack down one building, so they are squared off on
-   the leader side and carry a spine there — a column of tags reading into the
-   façade, rather than a scatter of loose pills. */
 .floor-label {
   position: relative; display: block; white-space: nowrap;
-  /* CSS2D centres a label on its anchor; shift it clear so the leader starts at
-     the storey rather than crossing it. */
   translate: calc(50% + 4px) 0;
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(41, 33, 22, 0.1);
-  border-left: 2px solid rgba(41, 33, 22, 0.46);
-  border-radius: 3px 8px 8px 3px; padding: 4px 11px 5px 9px;
-  box-shadow: 0 1px 1px rgba(66, 50, 32, 0.05), 0 5px 14px rgba(66, 50, 32, 0.11);
+  background: rgba(10, 14, 20, 0.85); backdrop-filter: blur(8px);
+  border: 1px solid var(--s-line);
+  border-left: 2px solid var(--s-accent);
+  border-radius: 2px 5px 5px 2px; padding: 4px 11px 5px 9px;
+  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.45);
 }
-.floor-label::before {   /* leader back to the storey it names */
+.floor-label::before {
   content: ''; position: absolute; right: 100%; top: 50%;
   width: 16px; height: 1px; margin-right: 2px;
-  background: linear-gradient(to left, rgba(41, 33, 22, 0.44), rgba(41, 33, 22, 0));
+  background: linear-gradient(to left, rgba(127, 176, 232, 0.6), rgba(127, 176, 232, 0));
 }
 .floor-label b {
-  display: block; font-size: 11.5px; font-weight: 600; color: var(--story-ink);
+  display: block; font-size: 11.5px; font-weight: 600; color: var(--s-ink);
   letter-spacing: -0.006em; line-height: 1.15;
 }
 .floor-label i {
   display: block; font-style: normal; font-size: 10px; margin-top: 1px;
-  color: var(--story-ink-2); font-variant-numeric: tabular-nums; line-height: 1.15;
+  color: var(--s-ink-2); font-family: var(--s-mono);
+  font-variant-numeric: tabular-nums; line-height: 1.15;
 }
 
+/* ---------------------------------------------------------- chrome ---- */
 .story-top {
   position: absolute; top: 0; left: 0; right: 0; z-index: 3;
-  display: flex; align-items: center; gap: 14px;
+  display: flex; align-items: center; gap: 10px;
   padding: 16px clamp(14px, 3vw, 26px);
 }
-.story-mark { font-weight: 620; color: var(--story-ink); text-shadow: 0 1px 2px rgba(255, 255, 255, 0.65); }
-.story-clock {
-  font-size: 1.3rem; font-weight: 660; font-variant-numeric: tabular-nums;
-  padding: 4px 16px; border-radius: 999px; color: var(--story-ink);
-  background: var(--story-surface); backdrop-filter: var(--story-blur);
-  box-shadow: var(--story-shadow);
+.story-mark {
+  font-family: var(--s-mono); font-size: 0.72rem; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--s-ink-2);
 }
 .story-spacer { flex: 1; }
-
 .story-btn {
-  font: inherit; font-size: 0.85rem; cursor: pointer; color: var(--story-ink);
-  background: var(--story-surface); backdrop-filter: var(--story-blur); border: 0;
-  border-radius: 11px; padding: 9px 15px; min-height: 38px;
-  display: inline-flex; align-items: center; gap: 8px;
-  box-shadow: var(--story-shadow); transition: box-shadow 0.18s ease, background 0.18s ease;
+  font: inherit; font-family: var(--s-mono); font-size: 0.7rem;
+  letter-spacing: 0.1em; text-transform: uppercase; text-decoration: none;
+  cursor: pointer; color: var(--s-ink-2);
+  display: inline-flex; align-items: center; gap: 8px; min-height: 30px;
+  background: transparent; border: 1px solid var(--s-line);
+  border-radius: 2px; padding: 5px 13px;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
-.story-btn:hover { background: #fff; box-shadow: var(--story-lift); }
-.story-btn:disabled { opacity: 0.45; cursor: default; }
-.story-btn--play { min-width: 84px; justify-content: center; font-weight: 600; }
+.story-btn:hover { color: var(--s-ink); border-color: var(--s-ink-3); background: rgba(180, 200, 224, 0.06); }
+.story-btn:disabled { opacity: 0.35; cursor: default; }
+.story-btn--play { min-width: 92px; justify-content: center; color: var(--s-ink); border-color: var(--s-ink-3); }
+.story-btn--close { color: var(--s-ink); }
 .story-btn kbd {
-  font: inherit; font-size: 0.72rem; color: #6d6b66;
-  border: 1px solid var(--story-line); border-radius: 4px; padding: 0 4px;
+  font: inherit; font-size: 0.62rem; opacity: 0.6;
+  border: 1px solid var(--s-line); border-radius: 2px; padding: 0 4px;
 }
 
+/* ------------------------------------------------------ story panel ---- */
+/* One card, deliberately large: the chapter, the year, the prose and the deals
+   closing right now, all in the same place and all changing together. */
 .story-panel {
-  position: absolute; z-index: 3; left: clamp(14px, 3vw, 34px); bottom: 108px;
-  width: min(30rem, calc(100vw - 28px));
-  background: var(--story-surface); backdrop-filter: var(--story-blur);
-  border-radius: 20px;
-  padding: 22px 26px 24px; box-shadow: var(--story-lift);
+  position: absolute; left: clamp(14px, 3vw, 30px); bottom: 96px; z-index: 3;
+  width: clamp(330px, 28vw, 440px); max-height: calc(100vh - 210px);
+  overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin;
+  /* Fade the cut rather than slicing an entry in half when the feed is long. */
+  -webkit-mask-image: linear-gradient(#000 calc(100% - 26px), transparent);
+  mask-image: linear-gradient(#000 calc(100% - 26px), transparent);
+  padding: 26px 28px 24px;
+  background: var(--s-panel); backdrop-filter: var(--s-blur);
+  border: 1px solid var(--s-line); border-radius: 3px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
 }
-.story-kicker {
-  font-size: 0.72rem; letter-spacing: 0.11em; text-transform: uppercase;
-  color: var(--story-ink-2); margin: 0 0 9px;
+/* A rule across the top that fills as the chapter plays — the clearest signal
+   that this card is tied to the clock and not just sitting there. */
+.sp-rule {
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: var(--s-line-2);
 }
-.story-panel h2 { font-size: clamp(1.2rem, 2.4vw, 1.55rem); margin: 0 0 10px; }
-.story-body { font-size: 0.92rem; line-height: 1.6; color: var(--story-ink-2); margin: 0; }
-.story-hint { font-size: 0.75rem; color: #9c9184; margin: 16px 0 0; }
-
-.story-feed {
-  position: absolute; z-index: 3; right: clamp(14px, 3vw, 34px); top: 76px;
-  width: min(21rem, 46vw); list-style: none; margin: 0; padding: 0;
-  display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+.sp-rule span {
+  display: block; height: 100%; width: 0;
+  background: var(--s-accent);
+  transition: width 0.25s linear;
+}
+.sp-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 16px; margin-bottom: 16px;
+}
+.sp-chapter {
+  font-family: var(--s-mono); font-size: 0.66rem; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--s-ink-3);
+}
+.sp-clock {
+  font-family: var(--s-mono); font-size: 1.15rem; font-weight: 500;
+  color: var(--s-accent); font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+.story-panel h2 {
+  font-family: var(--s-serif); font-weight: 400; letter-spacing: -0.01em;
+  font-size: clamp(1.6rem, 3.2vw, 2.15rem); line-height: 1.1;
+  margin: 0 0 14px; color: var(--s-ink);
+}
+.story-body {
+  font-size: 0.95rem; line-height: 1.62; color: var(--s-ink-2); margin: 0;
+}
+.sp-deals { margin-top: 22px; border-top: 1px solid var(--s-line-2); padding-top: 16px; }
+.sp-deals-label {
+  display: block; font-family: var(--s-mono); font-size: 0.62rem;
+  letter-spacing: 0.16em; text-transform: uppercase; color: var(--s-ink-3);
+  margin-bottom: 10px;
+}
+.story-feed { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.story-feed:empty::after {
+  content: '—'; color: var(--s-ink-3); font-family: var(--s-mono); font-size: 0.8rem;
 }
 .story-feed li {
-  background: var(--story-surface); backdrop-filter: var(--story-blur);
-  border-left: 3px solid #2a78d6; border-radius: 14px; padding: 11px 15px;
-  box-shadow: var(--story-shadow); animation: feed-in 0.4s ease both;
+  padding: 8px 12px; border-left: 2px solid var(--s-accent);
+  background: rgba(180, 200, 224, 0.05);
+  animation: feed-in 0.4s ease-out;
 }
-.story-feed li.is-failed { border-left-color: #d03b3b; }
-.story-feed li.is-pending { border-left-color: #898781; }
-.story-feed .feed-year { font-size: 0.72rem; color: #6d6b66; font-variant-numeric: tabular-nums; }
-.story-feed .feed-title { display: block; font-size: 0.86rem; font-weight: 560; }
-.story-feed .feed-value { font-size: 0.78rem; color: var(--story-ink-2); font-variant-numeric: tabular-nums; }
-@keyframes feed-in { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+@keyframes feed-in { from { opacity: 0; transform: translateY(-4px); } }
+.story-feed li.is-failed { border-left-color: #ff6b5a; }
+.story-feed li.is-pending { border-left-color: var(--s-ink-3); }
+.story-feed .feed-year {
+  font-family: var(--s-mono); font-size: 0.64rem; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--s-ink-3); font-variant-numeric: tabular-nums;
+}
+.story-feed .feed-title { display: block; font-size: 0.87rem; color: var(--s-ink); margin-top: 2px; }
+.story-feed .feed-value {
+  font-family: var(--s-mono); font-size: 0.74rem; color: var(--s-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.story-hint { font-size: 0.72rem; color: var(--s-ink-3); margin: 18px 0 0; line-height: 1.5; }
 
+/* ------------------------------------------------------- hover card ---- */
 .story-card {
-  position: absolute; z-index: 4; max-width: 22rem;
-  background: rgba(255, 255, 255, 0.97); backdrop-filter: var(--story-blur);
-  border-radius: 16px; padding: 15px 18px; pointer-events: none;
-  font-size: 0.85rem; line-height: 1.5; box-shadow: var(--story-lift);
+  position: fixed; z-index: 6; max-width: 22rem; pointer-events: none;
+  padding: 14px 16px 15px; font-size: 0.85rem;
+  background: var(--s-raise); backdrop-filter: var(--s-blur);
+  border: 1px solid var(--s-line); border-radius: 3px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
 }
 .story-card[hidden] { display: none; }
-.story-card h4 { margin: 9px 0 4px; font-size: 0.98rem; font-weight: 640; }
-.story-card .card-kind {
-  display: inline-block; font-size: 0.65rem; font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.07em; color: var(--story-ink-2);
-  background: rgba(70, 55, 38, 0.07); padding: 3px 9px; border-radius: 999px;
+.story-card h4 {
+  margin: 9px 0 5px; font-size: 1rem; font-weight: 400; color: var(--s-ink);
+  font-family: var(--s-serif);
 }
-.story-card .card-kind[data-kind='failed'] { color: #b93636; background: rgba(208, 59, 59, 0.12); }
-.story-card .card-kind[data-kind='pending'] { color: #7a5c1f; background: rgba(250, 178, 25, 0.2); }
-.story-card .card-meta { color: var(--story-ink-2); margin: 0 0 4px; }
-.story-card .card-note { color: var(--story-ink-2); margin: 8px 0 0; font-size: 0.8rem; }
-.story-card .card-foot { color: #898781; margin: 8px 0 0; font-size: 0.75rem; }
+.story-card .card-kind {
+  font-family: var(--s-mono); font-size: 0.6rem; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--s-accent);
+}
+.story-card .card-kind[data-kind='failed'] { color: #ff6b5a; }
+.story-card .card-kind[data-kind='pending'] { color: #e0b34a; }
+.story-card .card-meta { color: var(--s-ink-2); margin: 0 0 4px; font-size: 0.8rem; }
+.story-card .card-note { color: var(--s-ink-2); margin: 8px 0 0; font-size: 0.8rem; }
+.story-card .card-foot { color: var(--s-ink-3); margin: 8px 0 0; font-size: 0.74rem; }
 
+/* ---------------------------------------------------------- transport -- */
 .story-bar {
-  position: absolute; z-index: 3; left: 0; right: 0; bottom: 0;
-  display: flex; align-items: center; gap: clamp(10px, 2vw, 24px); flex-wrap: wrap;
-  padding: 14px clamp(14px, 3vw, 26px) 18px;
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 4;
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 14px clamp(14px, 3vw, 26px) 16px;
+  background: linear-gradient(rgba(7, 10, 16, 0), rgba(7, 10, 16, 0.86) 45%);
 }
 .story-transport { display: flex; gap: 8px; }
-.story-dots { display: flex; gap: 6px; list-style: none; margin: 0; padding: 0; flex-wrap: wrap; }
+.story-dots { display: flex; gap: 4px; list-style: none; margin: 0; padding: 0; flex-wrap: wrap; }
 .story-dot {
-  font: inherit; font-size: 0.72rem; cursor: pointer; color: var(--story-ink-2);
-  background: var(--story-surface); backdrop-filter: var(--story-blur); border: 0;
-  border-radius: 999px; padding: 6px 13px; min-height: 30px; box-shadow: var(--story-shadow);
+  font: inherit; font-family: var(--s-mono); font-size: 0.64rem;
+  letter-spacing: 0.08em; cursor: pointer; color: var(--s-ink-3);
+  background: transparent; border: 1px solid transparent; border-radius: 2px;
+  padding: 4px 9px; min-height: 26px;
 }
-.story-dot:hover { background: #fff; color: var(--story-ink); }
-.story-dot[aria-current='true'] { background: rgba(42, 38, 32, 0.94); color: #fff; font-weight: 600; }
-.story-scrub {
-  display: flex; align-items: center; gap: 10px; flex: 1 1 220px; min-width: 180px;
-  background: var(--story-surface); backdrop-filter: var(--story-blur);
-  border-radius: 999px; padding: 6px 18px 6px 16px; box-shadow: var(--story-shadow);
+.story-dot:hover { color: var(--s-ink); border-color: var(--s-line); }
+.story-dot[aria-current='true'] { color: var(--s-ink); border-color: var(--s-accent); }
+.story-scrub { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 220px; }
+.story-scrub label {
+  font-family: var(--s-mono); font-size: 0.62rem; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--s-ink-3);
 }
-.story-scrub label { font-size: 0.76rem; color: #6d6b66; }
-.story-scrub input { flex: 1; accent-color: #2a78d6; min-height: 28px; }
+.story-scrub input { flex: 1; accent-color: var(--s-accent); min-height: 28px; }
 
-.story :where(button, input):focus-visible { outline: 2px solid #2a78d6; outline-offset: 2px; }
+.story :where(a, button, input):focus-visible { outline: 2px solid var(--s-accent); outline-offset: 2px; }
 
 @media (max-width: 860px) {
-  .story-feed { display: none; }
-  .story-panel { bottom: 132px; padding: 16px 18px; }
-  .story-panel h2 { font-size: 1.1rem; }
+  .story-top { padding: 10px 12px; gap: 6px; }
+  .story-mark { display: none; }
+  .story-btn { padding: 4px 9px; font-size: 0.62rem; letter-spacing: 0.06em; }
+
+  .story-panel {
+    left: 10px; right: 10px; width: auto; bottom: calc(var(--s-bar-h, 108px) + 10px);
+    padding: 16px 16px 14px; max-height: 42vh;
+  }
+  .story-panel h2 { font-size: 1.3rem; margin-bottom: 10px; }
   .story-body { font-size: 0.86rem; }
   .story-hint { display: none; }
+  .sp-deals { margin-top: 14px; padding-top: 12px; }
+  .story-feed li { padding: 6px 10px; }
+
+  /* The chapter chips scroll rather than wrapping — three wrapped rows was what
+     pushed the transport up over the card. */
+  .story-bar { gap: 10px; padding: 10px 12px 12px; flex-wrap: nowrap; }
+  .story-dots {
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+    flex: 1; min-width: 0;
+  }
+  .story-dots::-webkit-scrollbar { display: none; }
+  .story-dot { white-space: nowrap; }
+  .story-scrub { display: none; }
+  .story-btn--play { min-width: 74px; }
 }
+
+@media (max-width: 460px) {
+  .story-panel { max-height: 38vh; }
+  .sp-deals { display: none; }
+}
+
 
 /* ---------------------------------------------------------- footer ---- */
 .foot { padding-top: clamp(48px, 7vw, 80px); color: var(--ink-2); font-size: 0.88rem; }
@@ -672,4 +746,23 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
   .lineage-scroll { overflow: visible; }
   .row-note[hidden] { display: block !important; }
   body { background: #fff; color: #000; }
+}
+
+/* A blocked deal, named only while it is standing in the sky. */
+.ghost-label {
+  position: relative; display: block; white-space: nowrap; text-align: center;
+  background: rgba(24, 16, 15, 0.82);
+  border: 1px solid rgba(255, 107, 90, 0.5);
+  border-radius: 3px; padding: 4px 10px 5px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+}
+.ghost-label b {
+  display: block; font-size: 11.5px; font-weight: 600; color: #ffd9d2;
+  letter-spacing: -0.006em; line-height: 1.15;
+}
+.ghost-label i {
+  display: block; font-style: normal; font-size: 10px; margin-top: 1px;
+  color: rgba(255, 154, 138, 0.9); line-height: 1.15;
+  font-variant-numeric: tabular-nums; text-transform: uppercase;
+  letter-spacing: 0.06em;
 }

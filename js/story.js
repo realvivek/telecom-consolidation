@@ -45,41 +45,43 @@ const MONUMENT_Z = -27.5;   // behind the plaza, so the empty 1983 city still ha
 const RISE_YEARS = 0.55;     // how long a storey takes to slide into place
 
 const TAU = Math.PI * 2;
+const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 /** Deterministic 0..1 — the surroundings must look the same on every visit. */
 const noise = (i) => {
   const x = Math.sin(i * 127.1 + 311.7) * 43758.5453;
   return x - Math.floor(x);
 };
-// A warm horizon under a soft blue zenith. Grey is the thing that made the
-// earlier version feel like a simulation rather than a designed scene, so there
-// is none of it in the palette — the neutrals are all warm.
-const SKY_TOP = 0x4d86c6;
-const SKY_MID = 0xa6c9e6;
-const SKY_HORIZON = 0xf1e4cf;
-// Low and a little behind the default view, so the sun is actually in frame and
-// the buildings throw long afternoon shadows across the plaza.
-const SUN_DIR = new THREE.Vector3(0.402, 0.156, -0.903).normalize();
+// Night. A near-black zenith falling to the sodium wash a city throws on its
+// own sky — the horizon is the brightest part, which is what makes it read as
+// a city at night rather than open country in the dark.
+const SKY_TOP = 0x070a10;
+const SKY_MID = 0x111925;
+const SKY_HORIZON = 0x2c3a4b;
+// Low and a little behind the default view, so the moon is in frame and the
+// buildings throw long shadows across the plaza.
+const SUN_DIR = new THREE.Vector3(0.402, 0.186, -0.903).normalize();
 const RIDGES = [
-  { radius: 400, min: 14, max: 40, seed: 8.9, peak: '#a9b3cd', haze: '#f1e4cf' },
-  { radius: 345, min: 11, max: 32, seed: 4.2, peak: '#98a5c4', haze: '#f1e4cf' },
-  { radius: 300, min: 8, max: 25, seed: 1.7, peak: '#8493b8', haze: '#f1e4cf' },
-  { radius: 232, min: 5, max: 15, seed: 6.4, peak: '#7d8a9e', haze: '#f1e4cf' },
+  { radius: 400, min: 14, max: 40, seed: 8.9, peak: '#1b2432', haze: '#2c3a4b' },
+  { radius: 345, min: 11, max: 32, seed: 4.2, peak: '#18202c', haze: '#2c3a4b' },
+  { radius: 300, min: 8, max: 25, seed: 1.7, peak: '#141b26', haze: '#2c3a4b' },
+  { radius: 232, min: 5, max: 15, seed: 6.4, peak: '#111721', haze: '#2c3a4b' },
 ];
 
 // The city sits on a paved plaza, inside a wider low-rise city that fades into
-// haze.
+// haze. At night the ground is nearly all reflected light, so the neutrals are
+// cool and close together — contrast comes from the windows, not the paving.
 const COLOR = {
-  land: 0x9db07f,       // open country around the city
-  plaza: 0xdbcaa6,      // the paved ground the blocks sit on
-  street: 0xeadcba,     // soft bands, no asphalt and no lane markings
-  pavement: 0xf2e6cc,   // block plinths, a shade lighter so they read as raised
-  leafA: 0x7f9f6b,
-  leafB: 0x94b07a,
-  trunk: 0xa08a6d,
-  ghost: 0xd03b3b,
-  pending: 0x8d8578,
-  beacon: 0x2a78d6,
-  stone: 0xd2c0a2,
+  land: 0x121a24,       // open country around the city
+  plaza: 0x1c2531,      // the paved ground the blocks sit on
+  street: 0x222c3a,     // soft bands, no asphalt and no lane markings
+  pavement: 0x27323f,   // block plinths, a shade lighter so they read as raised
+  leafA: 0x1e2b25,
+  leafB: 0x24332a,
+  trunk: 0x241f1c,
+  ghost: 0xff6b5a,
+  pending: 0x7c8798,
+  beacon: 0x4da3ff,
+  stone: 0x2a3543,
 };
 
 const OUTSKIRTS = 26;   // where the plaza ends and the surroundings begin
@@ -162,18 +164,40 @@ for (const st of Object.values(STYLES)) {
 const TALL_ORDER = ['bundle', 'taper', 'limestone', 'deco', 'gothic', 'terracotta', 'glassbox', 'round'];
 const LOW_ORDER = ['masonry', 'round', 'terracotta', 'glassbox', 'gothic', 'deco'];
 
+const WIN_COLS = 8;   // windows per tile — wide enough that the lit pattern
+                      // does not obviously repeat across a façade
+
 /** Windows drawn with a recess, a sill and a lintel rather than a flat swatch.
  *  One window row per tile vertically, so the repeat can be set per storey and
- *  a tall storey gets more rows instead of a squashed grid. */
-function facadeTexture({ wall, glass, reveal, sill }) {
+ *  a tall storey gets more rows instead of a squashed grid.
+ *
+ *  `lit` returns the emissive companion instead: black wall, and each window
+ *  filled at its own brightness. Some are dark, a few are bright, most are in
+ *  between — a façade where every pane matches reads as a light box, not an
+ *  office block at night. */
+function facadeTexture({ wall, glass, reveal, sill }, lit = false, seed = 0) {
   const c = document.createElement('canvas');
-  c.width = 64;
+  c.width = 16 * WIN_COLS;
   c.height = 16;
   const g = c.getContext('2d');
-  g.fillStyle = wall;
-  g.fillRect(0, 0, 64, 16);
-  for (let col = 0; col < 4; col++) {
+  g.fillStyle = lit ? '#000' : wall;
+  g.fillRect(0, 0, c.width, 16);
+  for (let col = 0; col < WIN_COLS; col++) {
     const x = col * 16;
+    if (lit) {
+      const r = noise(seed * 31.4 + col * 7.3);
+      // A third of the panes are dark, and the rest range from a dim desk lamp
+      // to a fully lit floorplate.
+      if (r < 0.34) continue;
+      const v = 0.22 + ((r - 0.34) / 0.66) ** 1.7 * 0.78;
+      const warm = noise(seed * 12.9 + col * 3.1);
+      const rr = Math.round(255 * v);
+      const gg = Math.round((208 + warm * 34) * v);
+      const bb = Math.round((150 + warm * 76) * v);
+      g.fillStyle = `rgb(${rr},${gg},${bb})`;
+      g.fillRect(x + 4, 3, 8, 9);
+      continue;
+    }
     g.fillStyle = reveal;                       // the opening, in shadow
     g.fillRect(x + 3, 2, 10, 11);
     g.fillStyle = glass;                        // glazing, set back
@@ -417,14 +441,14 @@ const RESOLVE_SHADER = {
   uniforms: {
     tColor: { value: null },
     tDepth: { value: null },
-    uExposure: { value: 1.14 },
+    uExposure: { value: 1.34 },
     uProjInv: { value: new THREE.Matrix4() },
     uResolution: { value: new THREE.Vector2() },
     uProjScale: { value: 1 },
     uRadius: { value: 0.85 },
     uIntensity: { value: 0.72 },
     uBias: { value: 0.09 },
-    uTint: { value: new THREE.Color(0x4a3a26) },
+    uTint: { value: new THREE.Color(0x141c28) },
   },
   vertexShader: `
     varying vec2 vUv;
@@ -589,8 +613,10 @@ export function createStory(root) {
   );
   scene.add(sky);
 
-  scene.add(new THREE.HemisphereLight(0xe2edff, 0xa89b7c, 1.02));
-  const sun = new THREE.DirectionalLight(0xfff0d2, 2.9);
+  // Sky glow above, almost nothing bouncing off the ground: at night the ambient
+  // term has to stay low or every window stops reading as lit.
+  scene.add(new THREE.HemisphereLight(0x354760, 0x0b1017, 0.62));
+  const sun = new THREE.DirectionalLight(0x9fb8dd, 0.92);
   sun.position.copy(SUN_DIR).multiplyScalar(260);
   sun.castShadow = true;
   sun.shadow.mapSize.set(3072, 3072);
@@ -604,23 +630,24 @@ export function createStory(root) {
   sun.shadow.normalBias = 0.035;
   scene.add(sun, sun.target);
 
-  // A fill from the camera side, so a backlit façade is still a pale stone wall.
-  const fill = new THREE.DirectionalLight(0xdce9ff, 0.62);
+  // A fill from the camera side, so a façade turned away from the moon still has
+  // a readable edge rather than going to pure black.
+  const fill = new THREE.DirectionalLight(0x51708f, 0.34);
   fill.position.set(-0.3, 0.55, 1).multiplyScalar(80);
   scene.add(fill);
 
-  // The sun itself, with a halo, so the light has a source you can see.
+  // The moon, with a halo, so the light has a source you can see. Tighter and
+  // far dimmer than the sun it replaced — a night sky's glare is a small hard
+  // disc with a thin bloom, not a wide wash.
   {
     const sunAt = SUN_DIR.clone().multiplyScalar(430);
-    // Glare, not a sticker: a wide, very gradual falloff with a small bright
-    // core. A hard-edged disc was the single most artificial thing in the sky.
     const glare = track(blobTexture(1, [
-      [0, 0.62], [0.05, 0.42], [0.13, 0.2], [0.28, 0.07], [0.55, 0.015], [1, 0],
+      [0, 0.9], [0.045, 0.72], [0.08, 0.22], [0.2, 0.06], [0.5, 0.012], [1, 0],
     ]));
-    for (const [size, opacity] of [[210, 0.85], [92, 0.6], [30, 0.55]]) {
+    for (const [size, opacity] of [[150, 0.4], [58, 0.44], [21, 0.85]]) {
       const halo = new THREE.Sprite(track(new THREE.SpriteMaterial({
         map: glare,
-        color: 0xfff3dd,
+        color: 0xe6eeff,
         transparent: true,
         opacity,
         blending: THREE.AdditiveBlending,
@@ -633,7 +660,45 @@ export function createStory(root) {
     }
   }
 
-  // A few soft clouds, drifting. Cheap, and the sky stops being an empty field.
+  // Stars — a single additive point cloud on the sky dome, thinning towards the
+  // horizon where the city's own glow washes them out.
+  {
+    const n = 700;
+    const pos = new Float32Array(n * 3);
+    const alpha = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const a = noise(i * 1.7) * TAU;
+      const y = 0.06 + noise(i * 5.3) ** 1.6 * 0.94;
+      const r = Math.sqrt(Math.max(0, 1 - y * y));
+      pos[i * 3] = Math.cos(a) * r * 540;
+      pos[i * 3 + 1] = y * 540;
+      pos[i * 3 + 2] = Math.sin(a) * r * 540;
+      alpha[i] = (0.25 + noise(i * 9.1) * 0.75) * Math.min(1, y * 2.4);
+    }
+    const geo = track(new THREE.BufferGeometry());
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('aAlpha', new THREE.BufferAttribute(alpha, 1));
+    scene.add(new THREE.Points(geo, track(new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      fog: false,
+      blending: THREE.AdditiveBlending,
+      uniforms: { uSize: { value: Math.min(2.4, renderer.getPixelRatio() * 1.6) } },
+      vertexShader: `attribute float aAlpha; varying float vA; uniform float uSize;
+        void main(){ vA = aAlpha;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          gl_PointSize = uSize * (0.6 + aAlpha); }`,
+      fragmentShader: `varying float vA;
+        void main(){
+          float d = length(gl_PointCoord - 0.5);
+          gl_FragColor = vec4(vec3(0.85, 0.9, 1.0), vA * smoothstep(0.5, 0.0, d));
+        }`,
+    }))));
+  }
+
+  // A few soft clouds, drifting. At night they are darker than the sky they sit
+  // in except where the city lights their undersides, so they read as mass
+  // rather than as the smoke the white daytime version turned into.
   const clouds = [];
   {
     const tex = track(blobTexture(0.9, [[0, 1], [0.45, 0.62], [1, 0]]));
@@ -643,7 +708,8 @@ export function createStory(root) {
       const puff = new THREE.Group();
       for (let b = 0; b < 3; b++) {
         const sprite = new THREE.Sprite(track(new THREE.SpriteMaterial({
-          map: tex, transparent: true, opacity: 0.5 + ((i + b) % 3) * 0.1,
+          map: tex, transparent: true, opacity: 0.2 + ((i + b) % 3) * 0.05,
+          color: 0x243040,
           depthWrite: false, fog: false,
         })));
         sprite.scale.set(34 + b * 9, 17 + b * 4, 1);
@@ -722,36 +788,54 @@ export function createStory(root) {
   // haze. Nothing out here is labelled, so the data buildings stay the heroes
   // while the skyline stops ending in mid-air.
   const extraTrees = [];
-  buildSurround();
 
   // Windows on the surrounding fabric too. A field of blank boxes standing next
   // to windowed towers is what made the outskirts read as packaging foam, and
   // it is the first thing the eye picks up in a wide shot. Instances vary in
   // size, so the shader divides the instance's own scale by the window pitch —
   // one window is the same size on a two-storey shed as on a ten-storey block.
+  // Declared before buildSurround() runs, since that is what reads them.
   const FAB_W = 2.7;    // world units per pair of windows
   const FAB_H = 1.15;   // world units per storey
+  const FAB_COLS = 6;   // windows per tile, same reasoning as the towers
 
-  function fabricFacade(hex) {
+  function fabricFacade(hex, bank) {
     const wall = new THREE.Color(hex);
-    const c = document.createElement('canvas');
-    c.width = 32;
-    c.height = 16;
-    const g = c.getContext('2d');
-    g.fillStyle = `#${wall.getHexString()}`;
-    g.fillRect(0, 0, 32, 16);
-    g.fillStyle = `#${wall.clone().lerp(GLAZE, 0.5).getHexString()}`;
-    g.fillRect(4, 3, 9, 8);
-    g.fillRect(18, 3, 9, 8);
-    g.fillStyle = `#${wall.clone().lerp(new THREE.Color(0xffffff), 0.3).getHexString()}`;
-    g.fillRect(3, 11, 11, 1);
-    g.fillRect(17, 11, 11, 1);
-    const tex = track(new THREE.CanvasTexture(c));
-    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    // Two canvases on the same grid: the wall, and the light coming out of it.
+    const paint = (emissive) => {
+      const c = document.createElement('canvas');
+      c.width = 16 * FAB_COLS;
+      c.height = 16;
+      const g = c.getContext('2d');
+      g.fillStyle = emissive ? '#000' : `#${wall.getHexString()}`;
+      g.fillRect(0, 0, c.width, 16);
+      for (let col = 0; col < FAB_COLS; col++) {
+        const x = col * 16;
+        if (emissive) {
+          const r = noise(bank * 17.3 + col * 5.1);
+          if (r < 0.42) continue;               // dark flat
+          const v = 0.2 + ((r - 0.42) / 0.58) ** 1.8 * 0.62;
+          g.fillStyle = `rgb(${Math.round(255 * v)},${Math.round(212 * v)},${Math.round(160 * v)})`;
+          g.fillRect(x + 4, 3, 9, 8);
+          continue;
+        }
+        g.fillStyle = `#${wall.clone().lerp(GLAZE, 0.5).getHexString()}`;
+        g.fillRect(x + 4, 3, 9, 8);
+        g.fillStyle = `#${wall.clone().lerp(new THREE.Color(0xffffff), 0.3).getHexString()}`;
+        g.fillRect(x + 3, 11, 11, 1);
+      }
+      const t = track(new THREE.CanvasTexture(c));
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      return t;
+    };
+    const tex = paint(false);
 
-    const mat = track(new THREE.MeshStandardMaterial({ map: tex, roughness: 0.94 }));
+    const mat = track(new THREE.MeshStandardMaterial({
+      map: tex, roughness: 0.94,
+      emissive: 0xffffff, emissiveMap: paint(true), emissiveIntensity: 1.0,
+    }));
     mat.onBeforeCompile = (shader) => {
       shader.vertexShader = shader.vertexShader.replace('#include <uv_vertex>', `
         #include <uv_vertex>
@@ -759,13 +843,20 @@ export function createStory(root) {
           float ax = abs( normal.x ), ay = abs( normal.y ), az = abs( normal.z );
           if ( ay >= ax && ay >= az ) {
             vMapUv = vec2( 0.02, 0.02 );   // roofs and soffits stay blank
+            #ifdef USE_EMISSIVEMAP
+              vEmissiveMapUv = vec2( 0.02, 0.02 );
+            #endif
           } else {
             vec3 iS = vec3(
               length( instanceMatrix[ 0 ].xyz ),
               length( instanceMatrix[ 1 ].xyz ),
               length( instanceMatrix[ 2 ].xyz ) );
             vec2 fs = ax >= az ? vec2( iS.z, iS.y ) : vec2( iS.x, iS.y );
-            vMapUv *= fs / vec2( ${FAB_W.toFixed(2)}, ${FAB_H.toFixed(2)} );
+            vec2 fScale = fs / vec2( ${FAB_W.toFixed(2)}, ${FAB_H.toFixed(2)} );
+            vMapUv *= fScale;
+            #ifdef USE_EMISSIVEMAP
+              vEmissiveMapUv *= fScale;
+            #endif
           }
         #endif
       `);
@@ -773,15 +864,19 @@ export function createStory(root) {
     return mat;
   }
 
+  buildSurround();
+
   function buildSurround() {
     const inner = span / 2 + GRID_STEP * 0.6;
     const clearOfCity = (x, z) => Math.abs(x) > inner || Math.abs(z) > inner;
 
     {
-      const tones = [0xe8dcc4, 0xdccdb0, 0xe3d3bc, 0xcfc0a6, 0xd8cbb4, 0xc4b39a];
+      // Night walls: cool and dark, barely separated. All the variation the eye
+      // gets out here comes from which windows are lit.
+      const tones = [0x2b3441, 0x323b49, 0x28313d, 0x353f4d, 0x2e3744, 0x242c37];
       const geo = track(chamferedBox(0.05, 0.07, 2));
-      const banks = tones.map((c) => {
-        const m = new THREE.InstancedMesh(geo, fabricFacade(c), 420);
+      const banks = tones.map((c, bi) => {
+        const m = new THREE.InstancedMesh(geo, fabricFacade(c, bi), 420);
         m.castShadow = true;
         m.receiveShadow = true;
         m.count = 0;
@@ -1128,21 +1223,30 @@ export function createStory(root) {
   // carries only the value gradient, each storey a shade lighter than the one
   // below it. Keeping those two jobs apart is what stops a dark brick style
   // going to mud while a limestone one stays paper-white.
-  const WIN_W = 2.4;   // world units per four windows
-  const WIN_H = 0.62;  // world units per window row
+  const WIN_W = 0.6 * WIN_COLS;   // world units per tile of windows
+  const WIN_H = 0.62;             // world units per window row
 
-  function facade(tower, width, height, depth, lift) {
+  function facade(tower, width, height, depth, lift, seed = 0) {
     const round = tower.style.plan === 'round';
-    const colour = new THREE.Color().setScalar(0.84 + 0.16 * lift);
+    // Walls are barely lit at night, so the value gradient that gave the massing
+    // depth by day is compressed — the light now comes out of the windows.
+    const colour = new THREE.Color().setScalar(0.4 + 0.13 * lift);
+    const repX = Math.max(1, Math.round((round ? width * Math.PI : width) / WIN_W));
+    const repY = Math.max(1, Math.round(height / WIN_H));
     const tex = track(tower.tex.clone());
     tex.needsUpdate = true;
     tex.anisotropy = maxAniso;
-    // A cylinder's u runs the whole circumference, not one face.
-    const across = round ? width * Math.PI : width;
-    tex.repeat.set(Math.max(1, Math.round(across / WIN_W)), Math.max(1, Math.round(height / WIN_H)));
+    tex.repeat.set(repX, repY);
+    // Each storey draws a different one of the tower's lit variants, so the
+    // pattern of lit panes changes as the eye goes up the building.
+    const lit = track(tower.litTex[Math.abs(Math.round(seed)) % tower.litTex.length].clone());
+    lit.needsUpdate = true;
+    lit.anisotropy = maxAniso;
+    lit.repeat.set(repX, repY);
     const geo = round ? cylGeo : (tower.style.plan === 'slab' ? slabGeo : boxGeo);
     const mesh = new THREE.Mesh(geo, track(new THREE.MeshStandardMaterial({
       color: colour, map: tex, roughness: 0.82, metalness: 0.02,
+      emissive: 0xffffff, emissiveMap: lit, emissiveIntensity: 1.15,
     })));
     mesh.scale.set(width, height, depth);
     mesh.castShadow = true;
@@ -1166,6 +1270,9 @@ export function createStory(root) {
 
   for (const t of towers) {
     t.tex = track(facadeTexture(t.style));
+    // Six lit patterns per tower, dealt out storey by storey.
+    t.litTex = Array.from({ length: 6 }, (_, k) =>
+      track(facadeTexture(t.style, true, t.x * 0.37 + t.z * 0.11 + k * 4.7)));
     t.trim = track(new THREE.MeshStandardMaterial({
       color: new THREE.Color(t.style.wall).multiplyScalar(0.7), roughness: 0.85,
     }));
@@ -1182,18 +1289,20 @@ export function createStory(root) {
     // The plinth is the founding company itself — it appears the year it did.
     const baseDims = planDims(t.style, widthAt(0) + 0.4);
     groundShadow(group, baseDims.x, baseDims.z, 0.17);
-    const plinth = facade(t, baseDims.x, PLINTH_H, baseDims.z, 0);
+    const plinth = facade(t, baseDims.x, PLINTH_H, baseDims.z, 0, 0);
     plinth.position.y = 0.16 + PLINTH_H / 2;
     plinth.userData.tower = t;
     group.add(plinth);
     picks.push(plinth);
 
+    let fi = 0;
     for (const f of t.floors) {
+      fi++;
       const w = widthAt(f.base) * (f.narrow ? 0.78 : 1);
       const dims = planDims(t.style, w);
       f.dx = dims.x / 2;
       f.dz = dims.z / 2;
-      const mesh = facade(t, dims.x, f.h, dims.z, Math.min(1, f.base / Math.max(t.height, 0.001)));
+      const mesh = facade(t, dims.x, f.h, dims.z, Math.min(1, f.base / Math.max(t.height, 0.001)), fi);
       mesh.position.y = 0.16 + f.base + f.h / 2;
       mesh.userData.deal = f.deal.id;
       mesh.userData.tower = t;
@@ -1229,20 +1338,53 @@ export function createStory(root) {
     t.roof = makeCrown(t.style, t.topWidth, track);
     group.add(t.roof);
 
-    // Deals that died, at the height they would have reached.
+    // A deal that died is the storey this building never got to build, so it
+    // belongs on top of the building at the height it stood that year — not
+    // floating off to one side, which is what made these read as stray boxes
+    // with no owner. It rises out of the roof as the deal is announced, then
+    // collapses back into it when the deal is blocked, and afterwards leaves
+    // only a thin mark on the parapet.
     t.ghostParts = t.ghosts.map((d) => {
       const h = floorHeight(d.valueB);
-      const node = outlineBox(TOWER_W * 0.94, h, TOWER_W * 0.94, COLOR.ghost, 0.13);
-      node.position.set(TOWER_W * 1.1 + 1.7, 0.16 + t.heightAt(d.year) + h / 2, 0);
+      const node = new THREE.Group();
+      const dims = planDims(t.style, t.topWidth);
+      const shell = new THREE.Mesh(boxGeo, track(new THREE.MeshBasicMaterial({
+        color: COLOR.ghost, transparent: true, opacity: 0.07,
+        depthWrite: false, side: THREE.DoubleSide,
+      })));
+      shell.scale.set(dims.x, h, dims.z);
+      const lines = new THREE.LineSegments(edgeGeo, track(new THREE.LineBasicMaterial({
+        color: COLOR.ghost, transparent: true, opacity: 0.85,
+      })));
+      lines.scale.copy(shell.scale);
+      node.add(shell, lines);
       node.visible = false;
       group.add(node);
       const hit = new THREE.Mesh(boxGeo, track(new THREE.MeshBasicMaterial({ visible: false })));
-      hit.scale.set(TOWER_W, h, TOWER_W);
-      hit.position.copy(node.position);
-      hit.userData.deal = d.id;
+      hit.scale.set(dims.x, h, dims.z);
       group.add(hit);
+      hit.userData.deal = d.id;
+      hit.visible = false;
       picks.push(hit);
-      return { deal: d, node };
+
+      // The scar: once the deal is dead, a short red band sits on the parapet
+      // for good, so the building still says "something was tried here".
+      const scar = new THREE.Mesh(boxGeo, track(new THREE.MeshBasicMaterial({
+        color: COLOR.ghost, transparent: true, opacity: 0.9,
+      })));
+      scar.scale.set(dims.x + 0.16, 0.07, dims.z + 0.16);
+      scar.visible = false;
+      group.add(scar);
+
+      const el = document.createElement('span');
+      el.className = 'ghost-label';
+      el.innerHTML = `<b>${d.target ? nameAt(d.target, d.year) : d.title}</b>`
+        + `<i>${money(d.valueB)} · blocked</i>`;
+      const label = new CSS2DObject(el);
+      label.visible = false;
+      group.add(label);
+
+      return { deal: d, node, shell, lines, hit, scar, label, h };
     });
 
     // Announced, not yet closed: scaffolding on the roof.
@@ -1457,7 +1599,30 @@ export function createStory(root) {
         }
       }
       t.roof.position.y = 0.16 + top + 0.09;
-      for (const p of t.ghostParts) p.node.visible = state.year >= p.deal.year;
+      // Announced a year out, blocked on the year itself, gone a year after —
+      // so at any moment only the deals actually in play are in the sky.
+      for (const p of t.ghostParts) {
+        const dy = state.year - p.deal.year;
+        const rise = clamp01((dy + 1.1) / 1.1);        // grows in over the year before
+        const fall = clamp01(dy / 0.85);               // collapses over the year after
+        const live = rise > 0 && fall < 1;
+        p.node.visible = live;
+        p.hit.visible = live;
+        if (live) {
+          const k = Math.max(0.001, rise * (1 - fall));
+          p.shell.scale.y = p.h * k;
+          p.lines.scale.y = p.h * k;
+          p.node.position.y = 0.16 + top + (p.h * k) / 2 + 0.2;
+          p.shell.material.opacity = 0.07 * (1 - fall);
+          p.lines.material.opacity = 0.85 * (1 - fall * 0.7);
+          p.hit.scale.y = p.h * k;
+          p.hit.position.copy(p.node.position);
+        }
+        p.scar.visible = dy >= 0.85;
+        if (p.scar.visible) p.scar.position.y = 0.16 + top + 0.035;
+        p.label.visible = false;   // placed by the declutter pass
+        p.label.position.set(0, 0.16 + top + p.h * 0.6 + 0.4, 0);
+      }
       for (const p of t.pendingParts) p.node.visible = state.year >= p.deal.year - 0.6;
       for (const b of t.beaconParts) b.mesh.visible = state.year >= b.deal.year;
     }
@@ -1593,6 +1758,25 @@ export function createStory(root) {
       if (!clash) floorPlaced.push(c);
     }
 
+    // A blocked deal only exists for a couple of years, so while it is in the
+    // sky it gets named — that window is the whole point of it being there.
+    for (const t of towers) {
+      for (const p of t.ghostParts) {
+        if (!p.node.visible || !t.group.visible) continue;
+        worldPos.set(t.x, p.label.position.y, t.z);
+        projected.copy(worldPos).project(camera);
+        if (projected.z > 1 || Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1) continue;
+        const size = sizeOf(p, p.label.element, 150, 34);
+        const sx = (projected.x * 0.5 + 0.5) * stageW;
+        const sy = (-projected.y * 0.5 + 0.5) * stageH;
+        const hw = size.lw / 2 + 6;
+        const hh = size.lh / 2 + 6;
+        if (inChrome(sx, sy, hw, hh)) continue;
+        p.label.visible = true;
+        floorPlaced.push({ sx, sy, hw, hh });
+      }
+    }
+
     candidates.length = 0;
     for (const t of towers) {
       if (!show.has(t) || !t.group.visible) { t.label.visible = false; continue; }
@@ -1722,7 +1906,15 @@ export function createStory(root) {
     const w = stage.clientWidth || innerWidth;
     const h = stage.clientHeight || innerHeight;
     stageW = w; stageH = h;
-    camera.aspect = w / h;
+    // The narration panel owns the left of the screen, so push the frustum's
+    // centre right by half its width and the city composes into what is left.
+    // Cheaper and steadier than moving the camera, which would swing the whole
+    // scene every time the panel resized.
+    const panel = root.querySelector('#story-panel');
+    const pad = w > 980 && panel ? Math.round(panel.getBoundingClientRect().width + 34) : 0;
+    camera.aspect = (w + pad) / h;
+    if (pad) camera.setViewOffset(w + pad, h, 0, 0, w, h);
+    else camera.clearViewOffset();
     camera.updateProjectionMatrix();
     renderer.setSize(w, h);
     const buf = renderer.getDrawingBufferSize(new THREE.Vector2());

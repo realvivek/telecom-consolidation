@@ -458,6 +458,11 @@ function buildJumpList() {
       story.on('year', (year) => {
         $('#story-clock').textContent = yr(year);
         scrub.value = String(year);
+        const ch = story.chapters[story.state.chapter];
+        if (ch) {
+          const k = (year - ch.yearFrom) / Math.max(0.001, ch.yearTo - ch.yearFrom);
+          $('#story-fill').style.width = `${Math.max(0, Math.min(1, k)) * 100}%`;
+        }
         for (const d of DEALS) {
           if (d.hideNode || fired.has(d.id) || d.year > year) continue;
           fired.add(d.id);
@@ -494,6 +499,8 @@ function buildJumpList() {
     launch.focus();
   }
 
+  $('#story-read').addEventListener('click', (e) => { e.preventDefault(); close(); location.hash = '#top'; });
+
   launch.addEventListener('click', open);
   $('#nav-story').addEventListener('click', open);
   $('#story-close').addEventListener('click', close);
@@ -519,6 +526,11 @@ function buildJumpList() {
     else if (e.key === ' ') { e.preventDefault(); playBtn.click(); }
   });
   addEventListener('resize', () => { if (!root.hidden) story?.resize(); });
+
+  // The city is the front door. Anyone arriving at a section — a shared link to
+  // the ledger, a jump back from "Read the full story" — asked for that section
+  // instead, so a hash in the URL opts out.
+  if (!location.hash) open();
 })();
 
 // ----------------------------------------------------------------- resize --
