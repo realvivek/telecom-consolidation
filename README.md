@@ -2,7 +2,8 @@
 
 **Forty years of American telecom mergers — 66 companies, 76 deals, 1983 to 2026 — in a chart that says which company each one ended up inside, plus a 3D city where every acquisition is a storey.**
 
-🔗 **Live**: https://realvivek.github.io/telecom-consolidation/
+🔗 **Live**: https://telecom-consolidation.onrender.com
+(also on GitHub Pages: https://realvivek.github.io/telecom-consolidation/)
 
 ## What it is
 
@@ -133,3 +134,18 @@ python3 -m http.server 8000
 ```
 
 (Any static server works; ES modules require http://, not file://.)
+
+## Deploy
+
+Live at **https://telecom-consolidation.onrender.com** — a Render static site
+(publish path `.`) tracking `main` with autoDeploy on: **every push to `main`
+deploys**. `render.yaml` is the blueprint for connecting the repo through the
+Render dashboard; a service created through the REST API never reads it, so
+`.github/workflows/deploy-render.yml` carries the same settings and is what
+created this one. `RENDER_API_KEY` lives in the repo's GitHub Actions secrets.
+
+The workflow verifies each deploy with five consecutive clean reads of the live
+URL — a fresh edge flaps while propagating, and a stray 404 can get cached until
+the next deploy purges it.
+
+GitHub Pages also builds from `main`, so both URLs serve the same commit.

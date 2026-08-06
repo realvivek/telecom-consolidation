@@ -10,7 +10,7 @@ name: deploy-to-render
 on:
   workflow_dispatch:
   push:
-    branches: [claude/website-readability-visualization-vljou8]
+    branches: [main]
 
 permissions:
   contents: read
