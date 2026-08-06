@@ -1,15 +1,19 @@
-# Render blueprint. The site is static ES modules with no build step, so this
-# just publishes the repository root as-is — the same thing GitHub Pages serves.
+# Render Blueprint — deploy by connecting this repo at
+# https://dashboard.render.com/blueprints
 #
-# To deploy: Render dashboard → Blueprints → New Blueprint Instance, point it at
-# this repository, and pick the branch you want live.
+# Static ES modules with no build step, so this publishes the repository root
+# as-is. Once connected, pushes to the watched branch deploy automatically.
 services:
   - type: web
-    name: telecom-consolidation
     runtime: static
+    name: telecom-consolidation
+    buildCommand: ""
     staticPublishPath: .
-    buildCommand: "echo 'no build step — static ES modules'"
+    autoDeploy: true
     headers:
+      - path: /*
+        name: X-Frame-Options
+        value: SAMEORIGIN
       # three.js is vendored and versioned by path, so it can be cached hard.
       - path: /vendor/*
         name: Cache-Control
