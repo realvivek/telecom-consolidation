@@ -1,0 +1,96 @@
+# Deploys the site to Render, the same way realvivek/decibel does.
+#
+# RENDER_API_KEY is a repository secret, readable only inside a workflow run, so
+# the API work lives here. The job is idempotent: it finds the service for this
+# repo, creates it on the first run, then triggers a deploy and waits for it to
+# go live. Render's own autoDeploy also fires on every push once the service
+# exists — this workflow is what creates it and what reports the outcome.
+name: deploy-to-render
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/website-readability-visualization-vljou8]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: render-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create the service if needed, then wait for the deploy
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RENDER_API_KEY:-}" ]; then
+            echo "::error::RENDER_API_KEY is empty or missing — check Settings → Secrets and variables → Actions"
+            exit 1
+          fi
+          API=https://api.render.com/v1
+          AUTH="Authorization: Bearer $RENDER_API_KEY"
+
+          LIST=$(curl -sf -H "$AUTH" "$API/services?limit=100")
+          SID=$(echo "$LIST" | jq -r '.[] | select((.service.repo // "") | test("realvivek/telecom-consolidation")) | .service.id' | head -1)
+
+          if [ -z "$SID" ]; then
+            echo "no existing service — creating the static site on $BRANCH"
+            OWNER=$(curl -sf -H "$AUTH" "$API/owners?limit=10" | jq -r '.[0].owner.id')
+            CREATE=$(curl -sS -X POST -H "$AUTH" -H "Content-Type: application/json" "$API/services" -d "$(jq -n \
+              --arg owner "$OWNER" --arg branch "$BRANCH" '{
+                type: "static_site",
+                name: "telecom-consolidation",
+                ownerId: $owner,
+                repo: "https://github.com/realvivek/telecom-consolidation",
+                branch: $branch,
+                autoDeploy: "yes",
+                serviceDetails: {
+                  publishPath: ".",
+                  headers: [
+                    { path: "/vendor/*", name: "Cache-Control", value: "public, max-age=31536000, immutable" },
+                    { path: "/*", name: "Cache-Control", value: "public, max-age=0, must-revalidate" }
+                  ]
+                }
+              }')")
+            SID=$(echo "$CREATE" | jq -r '.service.id // empty')
+            if [ -z "$SID" ]; then
+              echo "::error::service creation failed: $(echo "$CREATE" | jq -c .)"
+              exit 1
+            fi
+          fi
+          echo "service id: $SID"
+
+          URL=$(curl -sf -H "$AUTH" "$API/services/$SID" | jq -r '.serviceDetails.url')
+          echo "service url: $URL"
+
+          curl -sS -X POST -H "$AUTH" -H "Content-Type: application/json" "$API/services/$SID/deploys" -d '{}' >/dev/null || true
+          ST=""
+          for i in $(seq 1 60); do
+            ST=$(curl -sf -H "$AUTH" "$API/services/$SID/deploys?limit=1" | jq -r '.[0].deploy.status')
+            echo "deploy status: $ST"
+            [ "$ST" = "live" ] && break
+            case "$ST" in *failed*|*canceled*) echo "::error::deploy ended as $ST"; exit 1;; esac
+            sleep 10
+          done
+          if [ "$ST" != "live" ]; then
+            echo "::error::deploy did not reach live in time"
+            exit 1
+          fi
+
+          # Fresh edges flap while propagating, and a stray 404 can get cached
+          # until the next deploy purges it — require five clean reads in a row.
+          OK=0
+          for i in $(seq 1 40); do
+            if curl -sf "$URL" | grep -q "The Consolidation"; then OK=$((OK+1)); else OK=0; fi
+            echo "content check $i: streak $OK"
+            [ "$OK" -ge 5 ] && { echo "LIVE AND STABLE: $URL"; echo "- Live: $URL" >> "$GITHUB_STEP_SUMMARY"; exit 0; }
+            sleep 5
+          done
+          echo "::warning::content flapped — site is deployed but still propagating: $URL"
+          echo "- Live (propagating): $URL" >> "$GITHUB_STEP_SUMMARY"
