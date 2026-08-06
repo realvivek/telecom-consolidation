@@ -38,6 +38,7 @@ const ASSET_W = 2.25;        // partial asset buys are set back from the façade
 
 const GRID_COLS = 4;
 const GRID_STEP = 9.2;       // block pitch: building + pavement + street
+const FAB_BLOCKS = 8;        // how far the street grid and its blocks run out
 const BLOCK_W = 6.4;         // pavement slab around each building
 const ROAD_W = 2.8;
 const MONUMENT_Z = -27.5;   // behind the plaza, so the empty 1983 city still has a subject
@@ -54,29 +55,29 @@ const noise = (i) => {
 // Night. A near-black zenith falling to the sodium wash a city throws on its
 // own sky — the horizon is the brightest part, which is what makes it read as
 // a city at night rather than open country in the dark.
-const SKY_TOP = 0x070a10;
-const SKY_MID = 0x111925;
-const SKY_HORIZON = 0x2c3a4b;
+const SKY_TOP = 0x0a1326;
+const SKY_MID = 0x1a2c47;
+const SKY_HORIZON = 0x46495a;
 // Low and a little behind the default view, so the moon is in frame and the
 // buildings throw long shadows across the plaza.
 const SUN_DIR = new THREE.Vector3(0.402, 0.186, -0.903).normalize();
 const RIDGES = [
-  { radius: 400, min: 14, max: 40, seed: 8.9, peak: '#1b2432', haze: '#2c3a4b' },
-  { radius: 345, min: 11, max: 32, seed: 4.2, peak: '#18202c', haze: '#2c3a4b' },
-  { radius: 300, min: 8, max: 25, seed: 1.7, peak: '#141b26', haze: '#2c3a4b' },
-  { radius: 232, min: 5, max: 15, seed: 6.4, peak: '#111721', haze: '#2c3a4b' },
+  { radius: 400, min: 14, max: 40, seed: 8.9, peak: '#28334a', haze: '#46495a' },
+  { radius: 345, min: 11, max: 32, seed: 4.2, peak: '#222c42', haze: '#46495a' },
+  { radius: 300, min: 8, max: 25, seed: 1.7, peak: '#1c2539', haze: '#46495a' },
+  { radius: 232, min: 5, max: 15, seed: 6.4, peak: '#171f30', haze: '#46495a' },
 ];
 
 // The city sits on a paved plaza, inside a wider low-rise city that fades into
 // haze. At night the ground is nearly all reflected light, so the neutrals are
 // cool and close together — contrast comes from the windows, not the paving.
 const COLOR = {
-  land: 0x121a24,       // open country around the city
-  plaza: 0x1c2531,      // the paved ground the blocks sit on
-  street: 0x222c3a,     // soft bands, no asphalt and no lane markings
-  pavement: 0x27323f,   // block plinths, a shade lighter so they read as raised
-  leafA: 0x1e2b25,
-  leafB: 0x24332a,
+  land: 0x1b2430,       // open country around the city
+  plaza: 0x2b3341,      // the paved ground the blocks sit on
+  street: 0x353d4d,     // soft bands, no asphalt and no lane markings
+  pavement: 0x39424f,   // block plinths, a shade lighter so they read as raised
+  leafA: 0x2c4033,
+  leafB: 0x354b3c,
   trunk: 0x241f1c,
   ghost: 0xff6b5a,
   pending: 0x7c8798,
@@ -188,8 +189,8 @@ function facadeTexture({ wall, glass, reveal, sill }, lit = false, seed = 0) {
       const r = noise(seed * 31.4 + col * 7.3);
       // A third of the panes are dark, and the rest range from a dim desk lamp
       // to a fully lit floorplate.
-      if (r < 0.34) continue;
-      const v = 0.22 + ((r - 0.34) / 0.66) ** 1.7 * 0.78;
+      if (r < 0.24) continue;
+      const v = 0.34 + ((r - 0.24) / 0.76) ** 1.5 * 0.66;
       const warm = noise(seed * 12.9 + col * 3.1);
       const rr = Math.round(255 * v);
       const gg = Math.round((208 + warm * 34) * v);
@@ -441,14 +442,14 @@ const RESOLVE_SHADER = {
   uniforms: {
     tColor: { value: null },
     tDepth: { value: null },
-    uExposure: { value: 1.34 },
+    uExposure: { value: 1.5 },
     uProjInv: { value: new THREE.Matrix4() },
     uResolution: { value: new THREE.Vector2() },
     uProjScale: { value: 1 },
     uRadius: { value: 0.85 },
     uIntensity: { value: 0.72 },
     uBias: { value: 0.09 },
-    uTint: { value: new THREE.Color(0x141c28) },
+    uTint: { value: new THREE.Color(0x232f42) },
   },
   vertexShader: `
     varying vec2 vUv;
@@ -615,8 +616,8 @@ export function createStory(root) {
 
   // Sky glow above, almost nothing bouncing off the ground: at night the ambient
   // term has to stay low or every window stops reading as lit.
-  scene.add(new THREE.HemisphereLight(0x354760, 0x0b1017, 0.62));
-  const sun = new THREE.DirectionalLight(0x9fb8dd, 0.92);
+  scene.add(new THREE.HemisphereLight(0x4a648c, 0x14202c, 1.05));
+  const sun = new THREE.DirectionalLight(0xb6cdf0, 1.35);
   sun.position.copy(SUN_DIR).multiplyScalar(260);
   sun.castShadow = true;
   sun.shadow.mapSize.set(3072, 3072);
@@ -632,7 +633,7 @@ export function createStory(root) {
 
   // A fill from the camera side, so a façade turned away from the moon still has
   // a readable edge rather than going to pure black.
-  const fill = new THREE.DirectionalLight(0x51708f, 0.34);
+  const fill = new THREE.DirectionalLight(0x6d8fb5, 0.55);
   fill.position.set(-0.3, 0.55, 1).multiplyScalar(80);
   scene.add(fill);
 
@@ -746,19 +747,23 @@ export function createStory(root) {
     return mesh;
   };
 
-  // Open country, then the paved plaza the city stands on.
+  // Open country, the paving that runs the whole grid, then the brighter plaza
+  // the data blocks stand on.
   flat(1600, 1600, COLOR.land, 0);
+  flat(FAB_BLOCKS * 2 * GRID_STEP, FAB_BLOCKS * 2 * GRID_STEP, COLOR.land, 0.005);
   flat(span + GRID_STEP * 2.4, span + GRID_STEP * 2.4, COLOR.plaza, 0.01);
 
 
   // Streets: soft bands a shade lighter than the ground. No asphalt, no lane
-  // markings — the markings were most of what made the ground look busy.
+  // markings — the markings were most of what made the ground look busy. The
+  // grid runs the full extent of the city, not just the data blocks, so the
+  // surroundings stand on streets like everything else.
   {
-    const length = span + GRID_STEP * 2;
+    const length = FAB_BLOCKS * 2 * GRID_STEP;
     const roadGeo = track(new THREE.PlaneGeometry(ROAD_W, length));
     const roadMat = track(new THREE.MeshStandardMaterial({ color: COLOR.street, roughness: 1 }));
     const lines = [];
-    for (let i = 0; i <= GRID_COLS; i++) lines.push((i - GRID_COLS / 2) * GRID_STEP);
+    for (let i = -FAB_BLOCKS; i <= FAB_BLOCKS; i++) lines.push(i * GRID_STEP);
     for (const at of lines) {
       for (const horizontal of [false, true]) {
         const mesh = new THREE.Mesh(roadGeo, roadMat);
@@ -813,8 +818,8 @@ export function createStory(root) {
         const x = col * 16;
         if (emissive) {
           const r = noise(bank * 17.3 + col * 5.1);
-          if (r < 0.42) continue;               // dark flat
-          const v = 0.2 + ((r - 0.42) / 0.58) ** 1.8 * 0.62;
+          if (r < 0.3) continue;                // dark flat
+          const v = 0.3 + ((r - 0.3) / 0.7) ** 1.6 * 0.7;
           g.fillStyle = `rgb(${Math.round(255 * v)},${Math.round(212 * v)},${Math.round(160 * v)})`;
           g.fillRect(x + 4, 3, 9, 8);
           continue;
@@ -834,7 +839,7 @@ export function createStory(root) {
 
     const mat = track(new THREE.MeshStandardMaterial({
       map: tex, roughness: 0.94,
-      emissive: 0xffffff, emissiveMap: paint(true), emissiveIntensity: 1.0,
+      emissive: 0xffffff, emissiveMap: paint(true), emissiveIntensity: 1.35,
     }));
     mat.onBeforeCompile = (shader) => {
       shader.vertexShader = shader.vertexShader.replace('#include <uv_vertex>', `
@@ -867,8 +872,15 @@ export function createStory(root) {
   buildSurround();
 
   function buildSurround() {
-    const inner = span / 2 + GRID_STEP * 0.6;
-    const clearOfCity = (x, z) => Math.abs(x) > inner || Math.abs(z) > inner;
+    // Which block indices the data city already occupies — the fabric fills
+    // every other block on the same grid, so no building stands in a field.
+    const rows = Math.ceil(towers.length / GRID_COLS);
+    const usedBlock = new Set();
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < GRID_COLS; c++) {
+        usedBlock.add(`${c - (GRID_COLS - 1) / 2 - 0.5},${r - (rows - 1) / 2 - 0.5}`);
+      }
+    }
 
     {
       // Night walls: cool and dark, barely separated. All the variation the eye
@@ -876,7 +888,7 @@ export function createStory(root) {
       const tones = [0x2b3441, 0x323b49, 0x28313d, 0x353f4d, 0x2e3744, 0x242c37];
       const geo = track(chamferedBox(0.05, 0.07, 2));
       const banks = tones.map((c, bi) => {
-        const m = new THREE.InstancedMesh(geo, fabricFacade(c, bi), 420);
+        const m = new THREE.InstancedMesh(geo, fabricFacade(c, bi), 260);
         m.castShadow = true;
         m.receiveShadow = true;
         m.count = 0;
@@ -886,23 +898,32 @@ export function createStory(root) {
       const used = tones.map(() => 0);
       const d3 = new THREE.Object3D();
       let i = 0;
-      for (let gx = -10; gx <= 10; gx++) {
-        for (let gz = -10; gz <= 10; gz++) {
-          const cx = gx * 11.5;
-          const cz = gz * 11.5;
-          if (!clearOfCity(cx, cz)) continue;
+      // One block at a time, on the same lattice as the streets. Each block gets
+      // one building or a pair sharing the plot — never a scatter across the
+      // roadway, which is what made the old surroundings read as noise.
+      for (let gx = -FAB_BLOCKS; gx < FAB_BLOCKS; gx++) {
+        for (let gz = -FAB_BLOCKS; gz < FAB_BLOCKS; gz++) {
+          const key = `${gx + 0.5},${gz + 0.5}`;
+          if (usedBlock.has(key)) continue;
+          const cx = (gx + 0.5) * GRID_STEP;
+          const cz = (gz + 0.5) * GRID_STEP;
           const away = Math.hypot(cx, cz);
-          if (away > 118) continue;
-          const n = 2 + Math.floor(noise(i) * 2);
-          for (let k = 0; k < n; k++, i++) {
+          i++;
+          // Thin out with distance so the far grid dissolves into haze rather
+          // than ending in a wall.
+          if (noise(i * 2.3) > 1.05 - away / 96) continue;
+
+          const pair = noise(i * 7.7) > 0.62;
+          const plots = pair
+            ? [[-BLOCK_W * 0.24, BLOCK_W * 0.44], [BLOCK_W * 0.24, BLOCK_W * 0.44]]
+            : [[0, BLOCK_W * 0.92]];
+          for (const [ox, w] of plots) {
+            i++;
             const b = Math.floor(noise(i * 3 + 1) * tones.length);
-            if (used[b] >= 420) continue;
-            const h = 0.9 + noise(i * 11) * (away > 62 ? 2.0 : 4.2);
-            d3.position.set(
-              cx + (noise(i * 13) - 0.5) * 5.2, h / 2,
-              cz + (noise(i * 17) - 0.5) * 5.2,
-            );
-            d3.scale.set(2.2 + noise(i * 5) * 2.8, h, 2.2 + noise(i * 7) * 2.8);
+            if (used[b] >= 260) continue;
+            const h = 1.1 + noise(i * 11) * (away > 46 ? 2.4 : 5.4);
+            d3.position.set(cx + ox, h / 2, cz + (noise(i * 17) - 0.5) * 0.8);
+            d3.scale.set(w, h, BLOCK_W * (0.62 + noise(i * 7) * 0.3));
             d3.updateMatrix();
             banks[b].setMatrixAt(used[b]++, d3.matrix);
           }
@@ -984,6 +1005,30 @@ export function createStory(root) {
       globes.setMatrixAt(i, pd.matrix);
     });
     scene.add(posts, globes);
+
+    // A pool of sodium light on the pavement under each lamp. Real point lights
+    // at this count would cost more than the whole rest of the frame, and an
+    // additive decal is what actually reads — an unlit street under a lit lamp
+    // is most of why the ground looked dead.
+    {
+      const pool = track(blobTexture(0.95, [[0, 0.5], [0.35, 0.26], [0.7, 0.06], [1, 0]]));
+      const geo = track(new THREE.PlaneGeometry(1, 1));
+      geo.rotateX(-Math.PI / 2);
+      const mat = track(new THREE.MeshBasicMaterial({
+        map: pool, color: 0xffc987, transparent: true, opacity: 0.75,
+        blending: THREE.AdditiveBlending, depthWrite: false, fog: true,
+      }));
+      const pools = new THREE.InstancedMesh(geo, mat, spots.length);
+      pools.renderOrder = 2;
+      const q = new THREE.Object3D();
+      spots.forEach(([x, z], i) => {
+        q.position.set(x, 0.185, z);
+        q.scale.setScalar(6.4);
+        q.updateMatrix();
+        pools.setMatrixAt(i, q.matrix);
+      });
+      scene.add(pools);
+    }
 
     // Street furniture along the kerbs, placed deterministically: planters with
     // a clipped hedge, benches, and bins.
@@ -1230,7 +1275,7 @@ export function createStory(root) {
     const round = tower.style.plan === 'round';
     // Walls are barely lit at night, so the value gradient that gave the massing
     // depth by day is compressed — the light now comes out of the windows.
-    const colour = new THREE.Color().setScalar(0.4 + 0.13 * lift);
+    const colour = new THREE.Color().setScalar(0.66 + 0.16 * lift);
     const repX = Math.max(1, Math.round((round ? width * Math.PI : width) / WIN_W));
     const repY = Math.max(1, Math.round(height / WIN_H));
     const tex = track(tower.tex.clone());
@@ -1246,7 +1291,7 @@ export function createStory(root) {
     const geo = round ? cylGeo : (tower.style.plan === 'slab' ? slabGeo : boxGeo);
     const mesh = new THREE.Mesh(geo, track(new THREE.MeshStandardMaterial({
       color: colour, map: tex, roughness: 0.82, metalness: 0.02,
-      emissive: 0xffffff, emissiveMap: lit, emissiveIntensity: 1.15,
+      emissive: 0xffffff, emissiveMap: lit, emissiveIntensity: 1.5,
     })));
     mesh.scale.set(width, height, depth);
     mesh.castShadow = true;
@@ -1910,8 +1955,13 @@ export function createStory(root) {
     // centre right by half its width and the city composes into what is left.
     // Cheaper and steadier than moving the camera, which would swing the whole
     // scene every time the panel resized.
+    // Only part of the panel's width, and never more than a third of the frame:
+    // shifting by the full width of a large card throws the city off the edge
+    // instead of composing it.
     const panel = root.querySelector('#story-panel');
-    const pad = w > 980 && panel ? Math.round(panel.getBoundingClientRect().width + 34) : 0;
+    const pad = w > 980 && panel
+      ? Math.round(Math.min(w * 0.32, panel.getBoundingClientRect().width * 0.72 + 26))
+      : 0;
     camera.aspect = (w + pad) / h;
     if (pad) camera.setViewOffset(w + pad, h, 0, 0, w, h);
     else camera.clearViewOffset();
