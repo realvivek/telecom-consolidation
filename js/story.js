@@ -1715,6 +1715,7 @@ export function createStory(root) {
   const floorPlaced = [];
   let stageW = 1;
   let stageH = 1;
+  let lastPad = { x: -1, y: -1, w: -1, h: -1 };
 
   /** The narration panel, the deal feed, the deal card and the transport bar own
    *  their corners; a label that would land on one is dropped rather than
@@ -1741,10 +1742,14 @@ export function createStory(root) {
         x1: r.right - base.left + 8, y1: r.bottom - base.top + 8,
       });
     }
+    applyViewOffset();
   }
 
-  /** Labels are drawn centred on their anchor, so the test is box against box. */
+  /** Labels are drawn centred on their anchor, so the test is box against box.
+   *  A label running off the side of the stage is dropped too — on a phone that
+   *  is most of them, and half a company name is worse than none. */
   function inChrome(sx, sy, hw, hh) {
+    if (sx - hw < 4 || sx + hw > stageW - 4) return true;
     for (const r of chromeRects) {
       if (sx + hw > r.x0 && sx - hw < r.x1 && sy + hh > r.y0 && sy - hh < r.y1) return true;
     }
@@ -1947,6 +1952,34 @@ export function createStory(root) {
   });
 
   // -------------------------------------------------------------- resize --
+  // The narration panel owns part of the screen, so the frustum's centre is
+  // pushed away from it and the city composes into what is left. On a desktop
+  // the panel sits beside the city, so that push is sideways; on a phone it is
+  // underneath, so the push is upward instead. Cheaper and steadier than moving
+  // the camera, which would swing the whole scene whenever the panel resized —
+  // and the panel does resize, since every chapter's text is a different length.
+  function applyViewOffset() {
+    const w = stageW;
+    const h = stageH;
+    const panel = root.querySelector('#story-panel');
+    const box = panel && !panel.hidden ? panel.getBoundingClientRect() : null;
+    // Which way to push is decided by the panel's own shape, not the viewport's:
+    // a card spanning most of the width sits under the city and pushes it up, a
+    // narrow one sits beside it and pushes it sideways. That way a phone turned
+    // on its side gets the right answer without a second breakpoint to keep in
+    // step with the stylesheet.
+    const band = box ? box.width > w * 0.6 : false;
+    const padX = box && !band ? Math.round(Math.min(w * 0.32, box.width * 0.72 + 26)) : 0;
+    const padY = box && band ? Math.round(Math.min(h * 0.34, box.height * 0.78)) : 0;
+    if (padX === lastPad.x && padY === lastPad.y && w === lastPad.w && h === lastPad.h) return;
+    lastPad = { x: padX, y: padY, w, h };
+    camera.aspect = (w + padX) / (h + padY);
+    if (padX || padY) camera.setViewOffset(w + padX, h + padY, 0, padY, w, h);
+    else camera.clearViewOffset();
+    camera.updateProjectionMatrix();
+    ao.uProjInv.value.copy(camera.projectionMatrixInverse);
+  }
+
   function resize() {
     const w = stage.clientWidth || innerWidth;
     const h = stage.clientHeight || innerHeight;
@@ -1955,17 +1988,7 @@ export function createStory(root) {
     // centre right by half its width and the city composes into what is left.
     // Cheaper and steadier than moving the camera, which would swing the whole
     // scene every time the panel resized.
-    // Only part of the panel's width, and never more than a third of the frame:
-    // shifting by the full width of a large card throws the city off the edge
-    // instead of composing it.
-    const panel = root.querySelector('#story-panel');
-    const pad = w > 980 && panel
-      ? Math.round(Math.min(w * 0.32, panel.getBoundingClientRect().width * 0.72 + 26))
-      : 0;
-    camera.aspect = (w + pad) / h;
-    if (pad) camera.setViewOffset(w + pad, h, 0, 0, w, h);
-    else camera.clearViewOffset();
-    camera.updateProjectionMatrix();
+    applyViewOffset();
     renderer.setSize(w, h);
     const buf = renderer.getDrawingBufferSize(new THREE.Vector2());
     sceneTarget.setSize(buf.x, buf.y);

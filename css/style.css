@@ -679,7 +679,8 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
 
   .story-panel {
     left: 10px; right: 10px; width: auto; bottom: calc(var(--s-bar-h, 108px) + 10px);
-    padding: 16px 16px 14px; max-height: 42vh;
+    /* The bottom fade needs empty space to land on, or it eats the last line. */
+    padding: 16px 16px 30px; max-height: 44vh;
   }
   .story-panel h2 { font-size: 1.3rem; margin-bottom: 10px; }
   .story-body { font-size: 0.86rem; }
@@ -693,6 +694,8 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
   .story-dots {
     flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
     flex: 1; min-width: 0;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent);
   }
   .story-dots::-webkit-scrollbar { display: none; }
   .story-dot { white-space: nowrap; }
@@ -701,8 +704,25 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
 }
 
 @media (max-width: 460px) {
-  .story-panel { max-height: 38vh; }
+  .story-panel { max-height: 42vh; }
   .sp-deals { display: none; }
+}
+
+/* A phone on its side: almost no height, plenty of width. The card goes back to
+   being a column beside the city rather than a band across it, which is the only
+   shape that leaves room to read a paragraph. */
+@media (max-height: 540px) and (min-width: 620px) {
+  .story-panel {
+    left: 12px; right: auto; width: min(46vw, 430px);
+    bottom: 62px; max-height: calc(100vh - 128px);
+    padding: 16px 18px 28px;
+  }
+  .story-panel h2 { font-size: 1.25rem; margin-bottom: 8px; }
+  .story-body { font-size: 0.85rem; line-height: 1.5; }
+  .sp-head { margin-bottom: 10px; }
+  .sp-clock { font-size: 1.15rem; }
+  .sp-deals, .story-hint { display: none; }
+  .story-bar { padding: 8px 12px 10px; }
 }
 
 
