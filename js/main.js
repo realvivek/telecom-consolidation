@@ -379,18 +379,19 @@ function buildJumpList() {
   // chapter so a new chapter never arrives already expanded over the city.
   const panelEl = $('#story-panel');
   const moreBtn = $('#story-more');
-  moreBtn.addEventListener('click', () => {
-    const open = !panelEl.classList.contains('is-open');
-    panelEl.classList.toggle('is-open', open);
-    moreBtn.setAttribute('aria-expanded', String(open));
-    moreBtn.textContent = open ? 'Show less' : 'Read more';
-  });
+  const scrimEl = $('#story-scrim');
 
-  function collapsePanel() {
-    panelEl.classList.remove('is-open');
-    moreBtn.setAttribute('aria-expanded', 'false');
-    moreBtn.textContent = 'Read more';
+  function setPanelOpen(on) {
+    panelEl.classList.toggle('is-open', on);
+    scrimEl.hidden = !on;
+    moreBtn.setAttribute('aria-expanded', String(on));
+    moreBtn.textContent = on ? 'Show less' : 'Read more';
+    if (on) panelEl.scrollTop = 0;
   }
+  const collapsePanel = () => setPanelOpen(false);
+
+  moreBtn.addEventListener('click', () => setPanelOpen(!panelEl.classList.contains('is-open')));
+  scrimEl.addEventListener('click', collapsePanel);
 
   function showChapter(ch, i) {
     collapsePanel();
@@ -545,7 +546,10 @@ function buildJumpList() {
 
   addEventListener('keydown', (e) => {
     if (root.hidden) return;
-    if (e.key === 'Escape') close();
+    if (e.key === 'Escape') {
+      // The reading sheet is the innermost thing open, so it goes first.
+      if (panelEl.classList.contains('is-open')) collapsePanel(); else close();
+    }
     else if (e.key === 'ArrowRight') $('#story-next').click();
     else if (e.key === 'ArrowLeft') $('#story-prev').click();
     else if (e.key === ' ') { e.preventDefault(); playBtn.click(); }

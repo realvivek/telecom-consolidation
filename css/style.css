@@ -522,7 +522,7 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
 
 /* ---------------------------------------------------------- chrome ---- */
 .story-top {
-  position: absolute; top: 0; left: 0; right: 0; z-index: 3;
+  position: absolute; top: 0; left: 0; right: 0; z-index: 7;
   display: flex; align-items: center; gap: 10px;
   padding: 16px clamp(14px, 3vw, 26px);
 }
@@ -599,6 +599,10 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
 }
 /* Only a phone gets the collapsed card, so the button only exists there. */
 .sp-more { display: none; }
+/* Catches the tap that closes the reading sheet. Only ever present on a phone,
+   and only while the sheet is open. */
+.sp-scrim { display: none; position: absolute; inset: 0; z-index: 5; background: transparent; }
+.sp-scrim[hidden] { display: none; }
 .sp-deals { margin-top: 28px; border-top: 1px solid var(--s-line-2); padding-top: 20px; }
 .sp-deals-label {
   display: block; font-family: var(--s-mono); font-size: 0.62rem;
@@ -653,7 +657,7 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
 
 /* ---------------------------------------------------------- transport -- */
 .story-bar {
-  position: absolute; left: 0; right: 0; bottom: 0; z-index: 4;
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 7;
   display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
   padding: 14px clamp(14px, 3vw, 26px) 16px;
   background: linear-gradient(rgba(7, 10, 16, 0), rgba(7, 10, 16, 0.86) 45%);
@@ -686,6 +690,8 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
      year, title and the opening lines. Anything more covers the city it is
      describing, which is the thing worth looking at on a small screen. Tap to
      read the rest. */
+  /* Collapsed, the card is a caption: which chapter, which year, its title.
+     Nothing else — the prose is what covers the city it describes. */
   .story-panel {
     left: 10px; right: 10px; width: auto; bottom: calc(var(--s-bar-h, 108px) + 10px);
     padding: 12px 14px 12px; max-height: none; overflow: visible;
@@ -695,12 +701,8 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
   .sp-chapter { font-size: 0.62rem; letter-spacing: 0.1em; }
   .sp-clock { font-size: 1.1rem; }
   .story-panel h2 { font-size: 1.05rem; line-height: 1.15; margin-bottom: 0; }
-  /* Collapsed, the card is a caption: which chapter, which year, its title.
-     The prose is what covers the city, so it waits behind "Read more". */
-  .story-body { display: none; font-size: 0.8rem; line-height: 1.45; }
-  .story-hint { display: none; }
-  .sp-deals { display: none; }
-  .story-feed li { padding: 6px 10px; }
+  .story-body { display: none; font-size: 0.85rem; line-height: 1.5; }
+  .story-hint, .sp-deals { display: none; }
 
   .sp-more {
     display: block; margin: 7px 0 0; padding: 3px 0;
@@ -708,9 +710,27 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
     letter-spacing: 0.12em; text-transform: uppercase;
     color: var(--s-accent); background: none; border: 0; cursor: pointer;
   }
-  .story-panel.is-open { max-height: 56vh; overflow-y: auto; padding-bottom: 26px; }
-  .story-panel.is-open .story-body { display: block; margin-top: 8px; }
-  .story-panel.is-open .sp-deals { display: block; margin-top: 14px; padding-top: 12px; }
+
+  /* Reading the chapter is a bottom sheet, not a card that swells in place.
+     Growing the card upward pushed it over the whole city, which is the thing
+     the chapter is describing. The sheet is capped, scrolls inside itself, sits
+     above the transport so playback stays reachable, and closes on a tap
+     anywhere else, on Escape, or when the chapter turns. */
+  .story-panel.is-open {
+    left: 0; right: 0; bottom: 52px; z-index: 6;
+    max-height: 42vh; overflow-y: auto; overscroll-behavior: contain;
+    border-radius: 14px 14px 0 0; border-bottom: 0;
+    padding: 18px 16px 20px;
+  }
+  .story-panel.is-open::before {
+    content: ''; position: absolute; top: 7px; left: 50%; translate: -50% 0;
+    width: 34px; height: 3px; border-radius: 2px; background: var(--s-line);
+  }
+  .story-panel.is-open .sp-rule { display: none; }
+  .story-panel.is-open .story-body { display: block; margin-top: 10px; }
+  .story-panel.is-open .sp-more { margin-top: 12px; }
+
+  .sp-scrim { display: block; }
 
   /* The chapter chips scroll rather than wrapping — three wrapped rows was what
      pushed the transport up over the card. */
@@ -742,7 +762,7 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
 }
 
 @media (max-width: 460px) {
-  .story-panel.is-open { max-height: 52vh; }
+  .story-panel.is-open { max-height: 40vh; }
 }
 
 /* A phone on its side: almost no height, plenty of width. The card goes back to
@@ -755,7 +775,16 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
     padding: 16px 18px 28px;
   }
   .story-panel h2 { font-size: 1.25rem; margin-bottom: 8px; }
-  .story-body { font-size: 0.85rem; line-height: 1.5; }
+  /* Wide enough to read the paragraph where it stands, so the sheet and its
+     button are not needed — and the body must be put back, since the portrait
+     rules above hid it. */
+  .story-body { display: block; font-size: 0.85rem; line-height: 1.5; }
+  .sp-more, .sp-scrim { display: none; }
+  .story-panel.is-open {
+    left: 12px; right: auto; bottom: 62px; z-index: 3;
+    border-radius: 3px; max-height: calc(100vh - 128px); padding: 16px 18px 28px;
+  }
+  .story-panel.is-open::before { display: none; }
   .sp-head { margin-bottom: 10px; }
   .sp-clock { font-size: 1.15rem; }
   .sp-deals, .story-hint { display: none; }
