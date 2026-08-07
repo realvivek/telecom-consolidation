@@ -375,26 +375,10 @@ function buildJumpList() {
     playBtn.textContent = story && story.state.playing ? 'Pause' : 'Play';
   }
 
-  // The phone card is collapsed to a caption; this opens it out. Reset on every
-  // chapter so a new chapter never arrives already expanded over the city.
   const panelEl = $('#story-panel');
-  const moreBtn = $('#story-more');
-  const scrimEl = $('#story-scrim');
-
-  function setPanelOpen(on) {
-    panelEl.classList.toggle('is-open', on);
-    scrimEl.hidden = !on;
-    moreBtn.setAttribute('aria-expanded', String(on));
-    moreBtn.textContent = on ? 'Show less' : 'Read more';
-    if (on) panelEl.scrollTop = 0;
-  }
-  const collapsePanel = () => setPanelOpen(false);
-
-  moreBtn.addEventListener('click', () => setPanelOpen(!panelEl.classList.contains('is-open')));
-  scrimEl.addEventListener('click', collapsePanel);
 
   function showChapter(ch, i) {
-    collapsePanel();
+    panelEl.scrollTop = 0;
     $('#story-kicker').textContent = `Chapter ${i + 1} of ${story.chapters.length} · ${ch.kicker}`;
     $('#story-title').textContent = ch.title.replace(/\.$/, '');
     $('#story-body').textContent = ch.body;
@@ -546,10 +530,7 @@ function buildJumpList() {
 
   addEventListener('keydown', (e) => {
     if (root.hidden) return;
-    if (e.key === 'Escape') {
-      // The reading sheet is the innermost thing open, so it goes first.
-      if (panelEl.classList.contains('is-open')) collapsePanel(); else close();
-    }
+    if (e.key === 'Escape') close();
     else if (e.key === 'ArrowRight') $('#story-next').click();
     else if (e.key === 'ArrowLeft') $('#story-prev').click();
     else if (e.key === ' ') { e.preventDefault(); playBtn.click(); }

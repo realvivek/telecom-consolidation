@@ -47,6 +47,11 @@ const RISE_YEARS = 0.55;     // how long a storey takes to slide into place
 
 const TAU = Math.PI * 2;
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+// How long a blocked deal stands in the sky: announced a year out, collapsing
+// over the year after. Both the animation and the camera framing read this, so
+// a deal can never be in shot for one and out of shot for the other.
+const GHOST_BEFORE = 1.1;
+const GHOST_AFTER = 0.85;
 /** Deterministic 0..1 — the surroundings must look the same on every visit. */
 const noise = (i) => {
   const x = Math.sin(i * 127.1 + 311.7) * 43758.5453;
@@ -547,6 +552,8 @@ export function createStory(root) {
   let stageW = 1;
   let stageH = 1;
   let lastPad = { x: -1, y: -1, w: -1, h: -1 };
+  // The part of the frame the narration card leaves for the city, in NDC.
+  const freeNdc = { cx: 0, cy: 0, hx: 1, hy: 1 };
   const disposables = [];
   const track = (x) => { disposables.push(x); return x; };
 
@@ -884,11 +891,18 @@ export function createStory(root) {
     // every other block on the same grid, so no building stands in a field.
     const rows = Math.ceil(towers.length / GRID_COLS);
     const usedBlock = new Set();
+    let minBX = Infinity; let maxBX = -Infinity; let minBZ = Infinity; let maxBZ = -Infinity;
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < GRID_COLS; c++) {
-        usedBlock.add(`${c - (GRID_COLS - 1) / 2 - 0.5},${r - (rows - 1) / 2 - 0.5}`);
+        const bx = c - (GRID_COLS - 1) / 2 - 0.5;
+        const bz = r - (rows - 1) / 2 - 0.5;
+        usedBlock.add(`${bx},${bz}`);
+        minBX = Math.min(minBX, bx); maxBX = Math.max(maxBX, bx);
+        minBZ = Math.min(minBZ, bz); maxBZ = Math.max(maxBZ, bz);
       }
     }
+    const nearData = (bx, bz) => bx >= minBX - 1 && bx <= maxBX + 1
+      && bz >= minBZ - 1 && bz <= maxBZ + 1;
 
     {
       // Night walls: cool and dark, barely separated. All the variation the eye
@@ -913,6 +927,10 @@ export function createStory(root) {
         for (let gz = -FAB_BLOCKS; gz < FAB_BLOCKS; gz++) {
           const key = `${gx + 0.5},${gz + 0.5}`;
           if (usedBlock.has(key)) continue;
+          // Leave a ring of empty blocks around the data city. In 1983 its
+          // buildings are a single storey tall, and anything built right up
+          // against the plaza hides them completely.
+          if (nearData(gx + 0.5, gz + 0.5)) continue;
           const cx = (gx + 0.5) * GRID_STEP;
           const cz = (gz + 0.5) * GRID_STEP;
           const away = Math.hypot(cx, cz);
@@ -929,7 +947,10 @@ export function createStory(root) {
             i++;
             const b = Math.floor(noise(i * 3 + 1) * tones.length);
             if (used[b] >= 260) continue;
-            const h = 1.1 + noise(i * 11) * (away > 46 ? 2.4 : 5.4);
+            // Low against the plaza, rising with distance. It was the other way
+          // round — the tallest fabric stood closest — so the surroundings
+          // buried the very buildings the story is about.
+          const h = 0.8 + noise(i * 11) * (away < 46 ? 1.5 : away < 74 ? 2.8 : 3.8);
             d3.position.set(cx + ox, h / 2, cz + (noise(i * 17) - 0.5) * 0.8);
             d3.scale.set(w, h, BLOCK_W * (0.62 + noise(i * 7) * 0.3));
             d3.updateMatrix();
@@ -1541,11 +1562,19 @@ export function createStory(root) {
   }
 
   // -------------------------------------------------------------- playback --
-  const chapters = CHAPTERS.map((ch) => ({
-    ...ch,
+  const chapters = CHAPTERS.map((ch) => {
     // Which buildings this chapter is about, straight from the deal years.
-    active: towers.filter((t) => t.allDeals.some((d) => d.year >= ch.yearFrom && d.year <= ch.yearTo)),
-  }));
+    const active = towers.filter((t) =>
+      t.allDeals.some((d) => d.year >= ch.yearFrom && d.year <= ch.yearTo));
+    // Plus any building whose blocked deal stands in the sky at some point in
+    // the chapter. A deal that fails is a beat in the story, and it cannot be
+    // one if the camera frames it out of shot — which is what happened to
+    // EchoStar's bid for DirecTV.
+    const framed = [...new Set([...active, ...towers.filter((t) =>
+      t.ghosts.some((d) => d.year - GHOST_BEFORE <= ch.yearTo
+        && d.year + GHOST_AFTER >= ch.yearFrom))])];
+    return { ...ch, active, framed };
+  });
 
   const state = {
     chapter: 0,
@@ -1591,10 +1620,49 @@ export function createStory(root) {
     const fitX = ((maxX - minX) / 2 + room) / tanH;
     const fitZ = ((maxZ - minZ) / 2 + room) / tanH;
     shot.dist = Math.max(fitY, fitX, fitZ, 20) * pad * (stageW < 760 ? 1.1 : 1);
+    refineFit(list, year);
+  }
+
+  /** The estimate above treats the city as a flat box, which perspective does
+   *  not: a near, short building foreshortens downward and can drop out of
+   *  frame while the arithmetic says it fits. So check the answer — project
+   *  every building the chapter is about and pull back until each lands inside
+   *  the region the narration card leaves free. A building framed out cannot be
+   *  labelled, which is how a blocked deal went unnamed. */
+  function refineFit(list, year) {
+    if (!list.length) return;
+    const pos = camera.position.clone();
+    const quat = camera.quaternion.clone();
+    for (let pass = 0; pass < 6; pass++) {
+      aimCamera();
+      camera.position.copy(camGoal);
+      camera.lookAt(lookGoal);
+      camera.updateMatrixWorld(true);
+      let worst = 1;
+      for (const t of list) {
+        for (const y of [0.2, t.heightAt(year) + 2.2]) {
+          probe.set(t.x, y, t.z).project(camera);
+          worst = Math.max(worst,
+            Math.abs(probe.x - freeNdc.cx) / freeNdc.hx,
+            Math.abs(probe.y - freeNdc.cy) / freeNdc.hy);
+        }
+      }
+      if (worst <= 1.002) break;
+      shot.dist *= Math.min(1.7, worst);
+    }
+    camera.position.copy(pos);
+    camera.quaternion.copy(quat);
+    camera.updateMatrixWorld(true);
   }
 
   function frameChapter(ch) {
-    fitTo(ch.active, ch.yearTo, ch.active.length ? 1.35 : 1.2);
+    // Before any deal has closed every building is a single storey, so framing
+    // the whole plaza makes them specks. Come in on the monument and the blocks
+    // around it instead — that is what the chapter is actually about.
+    const near = ch.framed.length
+      ? ch.framed
+      : towers.filter((t) => Math.abs(t.x) <= GRID_STEP && Math.abs(t.z) <= GRID_STEP);
+    fitTo(near, ch.yearTo, ch.framed.length ? 1.35 : 1.05);
     shot.azimuth = 0;
     shot.pitch = 0.21;
     spin = 0;
@@ -1669,8 +1737,8 @@ export function createStory(root) {
       // so at any moment only the deals actually in play are in the sky.
       for (const p of t.ghostParts) {
         const dy = state.year - p.deal.year;
-        const rise = clamp01((dy + 1.1) / 1.1);        // grows in over the year before
-        const fall = clamp01(dy / 0.85);               // collapses over the year after
+        const rise = clamp01((dy + GHOST_BEFORE) / GHOST_BEFORE);
+        const fall = clamp01(dy / GHOST_AFTER);
         const live = rise > 0 && fall < 1;
         p.node.visible = live;
         p.hit.visible = live;
@@ -1730,6 +1798,7 @@ export function createStory(root) {
 
   const projected = new THREE.Vector3();
   const worldPos = new THREE.Vector3();
+  const probe = new THREE.Vector3();
   // How far a tower label may be raised to clear a neighbour, in order of
   // preference. Nothing below the roof, since the stem would have to run
   // upwards through the building.
@@ -1811,7 +1880,7 @@ export function createStory(root) {
   function placeLabels(now = performance.now()) {
     measureChrome(now);
     const ch = chapters[state.chapter];
-    const show = new Set(state.selected ? [state.selected] : ch.active);
+    const show = new Set(state.selected ? [state.selected] : ch.framed);
     if (state.hovered) show.add(state.hovered);
     if (!show.size) for (const t of towers) show.add(t);
 
@@ -2049,9 +2118,21 @@ export function createStory(root) {
     // narrow one sits beside it and pushes it sideways. That way a phone turned
     // on its side gets the right answer without a second breakpoint to keep in
     // step with the stylesheet.
+    // The offset must equal the edge the card occupies, not a fraction of the
+    // card's size. Shifting the frustum by `pad` puts the scene's centre at
+    // (size + pad) / 2, so pad has to be the card's far edge for the scene to
+    // land centred in what is left. A fraction of the width left the centre too
+    // far over, and buildings sat behind the card where their labels were then
+    // dropped for overprinting it — which is how a blocked deal went unnamed
+    // while the camera believed it was framing the building.
+    const base = root.getBoundingClientRect();
     const band = box ? box.width > w * 0.6 : false;
-    const padX = box && !band ? Math.round(Math.min(w * 0.32, box.width * 0.72 + 26)) : 0;
-    const padY = box && band ? Math.round(Math.min(h * 0.26, box.height * 0.7)) : 0;
+    const padX = box && !band
+      ? Math.round(Math.max(0, Math.min(w * 0.52, box.right - base.left + 18)))
+      : 0;
+    const padY = box && band
+      ? Math.round(Math.max(0, Math.min(h * 0.6, h - (box.top - base.top) + 12)))
+      : 0;
     if (padX === lastPad.x && padY === lastPad.y && w === lastPad.w && h === lastPad.h) return;
     const refit = Math.abs(padY - lastPad.y) > 12 || Math.abs(padX - lastPad.x) > 12
       || w !== lastPad.w || h !== lastPad.h;
@@ -2061,6 +2142,13 @@ export function createStory(root) {
     else camera.clearViewOffset();
     camera.updateProjectionMatrix();
     ao.uProjInv.value.copy(camera.projectionMatrixInverse);
+    // Same region, in NDC, for the fit to aim at.
+    const left = padX ? (2 * padX) / w - 1 : -1;
+    const bottom = padY ? 1 - (2 * (h - padY)) / h : -1;
+    freeNdc.cx = (left + 1) / 2;
+    freeNdc.hx = Math.max(0.12, (1 - left) / 2);
+    freeNdc.cy = (bottom + 1) / 2;
+    freeNdc.hy = Math.max(0.12, (1 - bottom) / 2);
     if (refit && !state.userMoved && chapters[state.chapter]) frameChapter(chapters[state.chapter]);
   }
 
