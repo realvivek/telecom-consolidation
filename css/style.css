@@ -836,3 +836,34 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
   .bubble-bar { flex-wrap: wrap; }
   #bub-scrub { order: 3; flex-basis: 100%; }
 }
+
+/* A bubble you clicked: everything else recedes, and the chain is spelled out. */
+.bub.is-dim { fill-opacity: 0.12; }
+.bub.is-sel { stroke: var(--ink); stroke-width: 2; fill-opacity: 1; }
+
+.bub-detail {
+  position: relative; margin-top: 14px; padding: 16px 18px 16px;
+  border-radius: var(--r2); background: var(--band); box-shadow: var(--ring);
+}
+.bub-detail[hidden] { display: none; }
+.bub-detail h4 { margin: 0; font-size: 1.02rem; font-weight: 660; }
+.bub-meta { margin: 2px 0 10px; font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.bub-none { margin: 0; font-size: 0.86rem; color: var(--ink-2); }
+.bub-chain { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.bub-chain li { display: flex; gap: 12px; font-size: 0.87rem; }
+.bub-step-year {
+  flex: none; width: 3.2rem; color: var(--muted);
+  font-variant-numeric: tabular-nums; font-size: 0.8rem; padding-top: 1px;
+}
+.bub-step-body { color: var(--ink-2); }
+.bub-step-body b { color: var(--ink); font-weight: 640; }
+.bub-now { margin: 12px 0 0; font-size: 0.87rem; color: var(--ink-2); }
+.bub-now b { color: var(--ink); }
+.bub-close {
+  position: absolute; top: 10px; right: 10px; width: 28px; height: 28px;
+  font: inherit; font-size: 1.1rem; line-height: 1; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 999px;
+  background: var(--surface); color: var(--ink-2);
+}
+.bub-close:hover { color: var(--ink); }
+.bub-svg { cursor: pointer; }

@@ -51,7 +51,11 @@ function present(c, year) {
 
 export function createBubbles(root) {
   const holder = root.querySelector('#bubble-holder');
-  const svg = el('svg', { class: 'bub-svg', role: 'img' });
+  const svg = el('svg', {
+    class: 'bub-svg', role: 'img',
+    'aria-label': 'Bubble map of 66 telecom companies grouped by who owns them. '
+      + 'Every company and deal is also listed in the deal ledger below.',
+  });
   const gLinks = el('g');
   const gHulls = el('g');
   const gNodes = el('g');
@@ -82,6 +86,8 @@ export function createBubbles(root) {
   let scale = 1;
   let year = START_YEAR;
   let hovered = null;
+  let selected = null;
+  let filter = null;   // (company) => boolean, or null for "everything matches"
   let raf = 0;
   let playing = false;
   let last = 0;
@@ -220,13 +226,16 @@ export function createBubbles(root) {
       }));
     }
 
+    const chain = selected ? chainOf(selected) : null;
     for (const n of live) {
       if (n.vis < 0.02) continue;
       const [x, y] = P(n);
       const isTrunk = n.owner === n.id;
+      const dim = (filter && !filter(n.company)) || (chain && !chain.has(n.id));
       const c = el('circle', {
         cx: x, cy: y, r: Math.max(0, n.r * scale * n.vis),
-        class: `bub${isTrunk ? ' is-trunk' : ''}${hovered === n.id ? ' is-hover' : ''}`,
+        class: `bub${isTrunk ? ' is-trunk' : ''}${hovered === n.id ? ' is-hover' : ''}`
+          + `${dim ? ' is-dim' : ''}${selected === n.id ? ' is-sel' : ''}`,
       });
       c.dataset.id = n.id;
       gNodes.appendChild(c);
@@ -255,6 +264,33 @@ export function createBubbles(root) {
       sub.textContent = `${g.n} companies`;
       gLabels.appendChild(sub);
     }
+  }
+
+  /** Every step from this company up to whoever holds it now, with the deal
+   *  that moved it each time. This is the answer the thread chart made you
+   *  trace by eye. */
+  function chainOf(id) {
+    const out = new Set([id]);
+    let cur = id;
+    for (let guard = 0; guard < 40; guard++) {
+      const d = MERGES.find((x) => x.target === cur && x.year <= year);
+      if (!d) break;
+      cur = d.acquirer;
+      out.add(cur);
+    }
+    return out;
+  }
+
+  function chainSteps(id) {
+    const steps = [];
+    let cur = id;
+    for (let guard = 0; guard < 40; guard++) {
+      const d = MERGES.find((x) => x.target === cur && x.year <= year);
+      if (!d) break;
+      steps.push({ from: cur, deal: d });
+      cur = d.acquirer;
+    }
+    return { steps, owner: cur };
   }
 
   /* ------------------------------------------------------------- events -- */
@@ -292,6 +328,10 @@ export function createBubbles(root) {
 
   svg.addEventListener('pointermove', onMove);
   svg.addEventListener('pointerleave', () => { hovered = null; tip.hidden = true; });
+  svg.addEventListener('click', (evt) => {
+    const n = nodeAt(evt);
+    select(n ? n.id : null);
+  });
 
   /* --------------------------------------------------------------- loop -- */
 
@@ -321,8 +361,39 @@ export function createBubbles(root) {
   last = performance.now();
   raf = requestAnimationFrame(frame);
 
+  /** The detail card: the whole ownership chain, in one place. */
+  function select(id) {
+    selected = id;
+    const panel = root.querySelector('#bub-detail');
+    if (!panel) return;
+    if (!id) { panel.hidden = true; panel.replaceChildren(); return; }
+    const { steps, owner } = chainSteps(id);
+    const c = byId.get(id);
+    const bits = [`<button class="bub-close" type="button" aria-label="Clear selection">×</button>`
+      + `<h4>${finalName(id)}</h4>`
+      + `<p class="bub-meta">${yr(c.born)}–${
+        steps.length ? yr(steps[0].deal.year) : 'today'}</p>`];
+    if (!steps.length) {
+      bits.push('<p class="bub-none">Never acquired — still its own company in '
+        + `${yr(year)}.</p>`);
+    } else {
+      bits.push('<ol class="bub-chain">' + steps.map((s2) =>
+        `<li><span class="bub-step-year">${yr(s2.deal.year)}</span>`
+        + `<span class="bub-step-body"><b>${nameAt(s2.deal.acquirer, s2.deal.year)}</b> buys `
+        + `${nameAt(s2.from, s2.deal.year)}${s2.deal.valueB ? ` · ${money(s2.deal.valueB)}` : ''}</span></li>`
+      ).join('') + '</ol>');
+      bits.push(`<p class="bub-now">Inside <b>${finalName(owner)}</b> today.</p>`);
+    }
+    panel.innerHTML = bits.join('');
+    panel.hidden = false;
+    panel.querySelector('.bub-close').addEventListener('click', () => select(null));
+  }
+
   return {
     resize,
+    select,
+    get selected() { return selected; },
+    setFilter(fn) { filter = fn; },
     setYear(y) { year = Math.max(START_YEAR, Math.min(END_YEAR, y)); },
     get year() { return year; },
     play() { if (year >= END_YEAR) year = START_YEAR; playing = true; },

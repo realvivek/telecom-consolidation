@@ -222,8 +222,13 @@ function syncRail() {
 addEventListener('scroll', syncRail, { passive: true });
 lnScroll.addEventListener('scroll', syncRail, { passive: true });
 
+// Set by the bubble view once it loads, so the same controls drive both.
+let onFilterChange = () => {};
+let onJump = () => {};
+
 function applyLineageFilter() {
   const q = $('#ln-search').value.trim().toLowerCase();
+  onFilterChange(q, sectorFilter);
   const lanes = lnBody.querySelectorAll('.ln-lane');
   let shown = 0;
   lanes.forEach((el) => {
@@ -266,8 +271,10 @@ function buildJumpList() {
   $('#ln-search').addEventListener('input', () => { clearTimeout(t); t = setTimeout(applyLineageFilter, 120); });
 
   $('#ln-jump').addEventListener('change', (e) => {
-    const target = e.target.value && lnBody.querySelector(`#${CSS.escape(e.target.value)}`);
-    if (!target) return;
+    if (!e.target.value) return;
+    onJump(e.target.value);
+    const target = lnBody.querySelector(`#${CSS.escape(e.target.value)}`);
+    if (!target || document.querySelector('.lineage-frame').hidden) return;
     scrollTo({ top: target.getBoundingClientRect().top + scrollY - navHeight() - 40, behavior: 'smooth' });
   });
 
@@ -573,6 +580,21 @@ drawLineage();
     showYear(map.year);
     if (!reduceMotion) map.play();
     playBtn.textContent = map.playing ? 'Pause' : 'Play';
+
+    // The same search box and sector chips that fade threads now fade bubbles.
+    onFilterChange = (q, sector) => {
+      if (!q && sector === 'all') { map.setFilter(null); return; }
+      map.setFilter((c) => (sector === 'all' || c.sector === sector)
+        && (!q || `${c.name} ${c.short || ''} ${finalName(c.id)}`.toLowerCase().includes(q)));
+    };
+    // "Jump to" names a company group; in the bubble view that means select its
+    // trunk. Two entries are headings rather than companies — leave those alone
+    // rather than clearing whatever the reader had selected.
+    onJump = (domId) => {
+      const id = domId.replace(/^fam-/, '');
+      if (byId.has(id)) map.select(id);
+    };
+    addEventListener('keydown', (e) => { if (e.key === 'Escape') map.select(null); });
 
     scrub.addEventListener('input', () => {
       map.pause();

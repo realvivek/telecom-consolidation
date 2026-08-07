@@ -20,7 +20,10 @@ the clock. Play it and companies slide into their buyer as each deal closes —
 sixty-six separate bubbles in 1983, a handful of clusters by 2026. Containment
 answers "who ended up inside whom" without tracing anything. The layout is one
 continuous relaxation rather than a fresh pack per frame, so a merger reads as a
-movement you can follow rather than everything teleporting on every tick.
+movement you can follow rather than everything teleporting on every tick. Click a
+bubble and the rest recede while its whole chain of owners is written out — the
+answer the thread chart made you trace by eye. The search box and sector chips
+drive both views.
 
 **The lineage chart** is the precise reference, one click away. Every company is one horizontal thread with
 its name in a fixed left gutter, time runs left to right, and a company that was
