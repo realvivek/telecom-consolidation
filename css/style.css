@@ -467,6 +467,9 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
    holes in it. */
 .tower-label {
   position: relative; display: block; white-space: nowrap; text-align: center;
+  /* Raised clear of a neighbour when the declutter pass asks for it; the stem
+     grows to match so it still lands on the roof it names. */
+  translate: 0 calc(-1 * var(--lift, 0px));
   background: rgba(10, 14, 20, 0.82); backdrop-filter: blur(8px);
   border: 1px solid var(--s-line);
   border-radius: 4px; padding: 6px 11px 7px;
@@ -474,7 +477,7 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
 }
 .tower-label::after {
   content: ''; position: absolute; left: 50%; top: 100%;
-  width: 1px; height: 15px; margin-left: -0.5px;
+  width: 1px; height: calc(15px + var(--lift, 0px)); margin-left: -0.5px;
   background: linear-gradient(rgba(180, 200, 224, 0.4), rgba(180, 200, 224, 0));
 }
 .tower-label b {
@@ -690,6 +693,20 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
 
   /* The chapter chips scroll rather than wrapping — three wrapped rows was what
      pushed the transport up over the card. */
+  /* Label boxes are the real constraint on a phone, not the camera: they stay
+     the same pixel size while the frame is a quarter of the width, so only one
+     or two survive the declutter no matter how far the camera pulls back.
+     Smaller boxes are what actually gets more names on screen. */
+  .tower-label { padding: 4px 8px 5px; border-radius: 3px; }
+  .tower-label b { font-size: 11px; }
+  .tower-label i { font-size: 9px; margin-top: 1px; }
+  .tower-label::after { height: calc(10px + var(--lift, 0px)); }
+  .floor-label { padding: 3px 8px 4px; }
+  .floor-label b { font-size: 10.5px; }
+  .floor-label i { font-size: 9px; }
+  .ghost-label b { font-size: 10.5px; }
+  .ghost-label i { font-size: 9px; }
+
   .story-bar { gap: 10px; padding: 10px 12px 12px; flex-wrap: nowrap; }
   .story-dots {
     flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;

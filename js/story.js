@@ -542,6 +542,11 @@ export function createStory(root) {
   const stage = root.querySelector('#story-stage');
   const labelLayer = root.querySelector('#story-labels');
   const towers = buildTowers();
+  // Declared up here because the camera fit reads them, and that runs before
+  // the declutter pass these used to sit beside.
+  let stageW = 1;
+  let stageH = 1;
+  let lastPad = { x: -1, y: -1, w: -1, h: -1 };
   const disposables = [];
   const track = (x) => { disposables.push(x); return x; };
 
@@ -1564,12 +1569,25 @@ export function createStory(root) {
     // Before the breakup the plaza is nearly empty, so keep the monument in shot.
     if (year < 1985.5) { minZ = Math.min(minZ, MONUMENT_Z - 5); maxZ = Math.max(maxZ, MONUMENT_Z + 5); }
     shot.centre.set((minX + maxX) / 2, maxH * 0.46, (minZ + maxZ) / 2);
+
+    // Fit against the area actually left over for the city, not the whole
+    // canvas: the frustum is offset to clear the narration card, so part of the
+    // frame is spoken for. Clamping the horizontal term to a square frame —
+    // which is what this used to do — fits a portrait phone as though it were
+    // as wide as it is tall, and the city spills off both sides.
     const vFov = (camera.fov * Math.PI) / 180;
-    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * Math.max(camera.aspect, 1));
-    const fitY = (maxH / 2 + 4) / Math.tan(vFov / 2);
-    const fitX = ((maxX - minX) / 2 + 5) / Math.tan(hFov / 2);
-    const fitZ = ((maxZ - minZ) / 2 + 5) / Math.tan(hFov / 2);
-    shot.dist = Math.max(fitY, fitX, fitZ, 20) * pad;
+    const fullH = stageH + lastPad.y;
+    const freeW = Math.max(120, stageW - lastPad.x);
+    const freeH = Math.max(120, stageH - lastPad.y);
+    const tanV = Math.tan(vFov / 2) * (freeH / fullH);
+    const tanH = Math.tan(vFov / 2) * (freeW / fullH);
+    // Labels stand above the roofs and off the sides, so a narrow frame needs
+    // more room than the buildings alone would ask for.
+    const room = stageW < 760 ? 7 : 5;
+    const fitY = (maxH / 2 + room) / tanV;
+    const fitX = ((maxX - minX) / 2 + room) / tanH;
+    const fitZ = ((maxZ - minZ) / 2 + room) / tanH;
+    shot.dist = Math.max(fitY, fitX, fitZ, 20) * pad * (stageW < 760 ? 1.1 : 1);
   }
 
   function frameChapter(ch) {
@@ -1709,13 +1727,14 @@ export function createStory(root) {
 
   const projected = new THREE.Vector3();
   const worldPos = new THREE.Vector3();
+  // How far a tower label may be raised to clear a neighbour, in order of
+  // preference. Nothing below the roof, since the stem would have to run
+  // upwards through the building.
+  const LIFTS = [0, 30, 60, 90, 120, 150];
   const candidates = [];
   const placed = [];
   const floorCandidates = [];
   const floorPlaced = [];
-  let stageW = 1;
-  let stageH = 1;
-  let lastPad = { x: -1, y: -1, w: -1, h: -1 };
 
   /** The narration panel, the deal feed, the deal card and the transport bar own
    *  their corners; a label that would land on one is dropped rather than
@@ -1756,13 +1775,34 @@ export function createStory(root) {
     return false;
   }
 
-  /** Measured once, the first frame the label is actually on screen — the sizes
-   *  are set by the text, not the viewport, so they never need re-reading. */
-  function sizeOf(store, el, w, h) {
-    if (!store.lw && el.offsetWidth) {
-      store.lw = el.offsetWidth;
-      store.lh = el.offsetHeight;
+  /** Every label's box, measured in one pass with all of them shown.
+   *
+   *  Measuring lazily as each label appeared could not work: a hidden label is
+   *  display:none, so it reports zero and falls back to an assumed size. On a
+   *  phone that assumption was nearly twice the real box, so labels collided
+   *  against a size they never had and almost none of them ever appeared — no
+   *  amount of zooming out helped, because the camera was never the constraint.
+   *  One forced layout on open and on resize is the whole cost. */
+  let needMeasure = true;
+
+  function measureLabels() {
+    const pairs = [];
+    for (const t of towers) {
+      if (t.labelEl) pairs.push([t, t.labelEl]);
+      for (const f of t.floors) if (f.label) pairs.push([f, f.label.element]);
+      for (const p of t.ghostParts) if (p.label) pairs.push([p, p.label.element]);
     }
+    if (!pairs.length || !pairs[0][1].isConnected) return false;
+    const was = pairs.map(([, el]) => el.style.display);
+    for (const [, el] of pairs) el.style.display = '';
+    for (const [store, el] of pairs) {
+      if (el.offsetWidth) { store.lw = el.offsetWidth; store.lh = el.offsetHeight; }
+    }
+    pairs.forEach(([, el], i) => { el.style.display = was[i]; });
+    return true;
+  }
+
+  function sizeOf(store, el, w, h) {
     return store.lw ? store : { lw: w, lh: h };
   }
 
@@ -1853,9 +1893,24 @@ export function createStory(root) {
     candidates.sort((a, b) => a.priority - b.priority || a.depth - b.depth);
     placed.length = 0;
     for (const c of candidates) {
-      const clash = inChrome(c.sx, c.sy, c.hw, c.hh)
-        || placed.some((p) => Math.abs(p.sx - c.sx) < p.hw + c.hw
-          && Math.abs(p.sy - c.sy) < p.hh + c.hh);
+      // Towers stand shoulder to shoulder, so on a narrow screen their labels
+      // want more horizontal room than the city occupies and almost all of them
+      // get dropped. Lifting a label clear of its neighbour and paying out more
+      // stem is what actually fits them: the stem still lands on the roof, so
+      // raising the box costs nothing in clarity.
+      let lift = 0;
+      let clash = true;
+      for (const tryLift of LIFTS) {
+        const sy = c.sy - tryLift;
+        if (inChrome(c.sx, sy, c.hw, c.hh)) continue;
+        if (placed.some((p) => Math.abs(p.sx - c.sx) < p.hw + c.hw
+          && Math.abs(p.sy - sy) < p.hh + c.hh)) continue;
+        lift = tryLift;
+        clash = false;
+        break;
+      }
+      c.t.labelEl.style.setProperty('--lift', `${lift}px`);
+      c.sy -= lift;
       c.t.label.visible = !clash;
       c.t.labelEl.classList.toggle('is-focus', c.priority < 0);
       if (!clash) placed.push(c);
@@ -1895,6 +1950,7 @@ export function createStory(root) {
     renderer.setRenderTarget(null);
     renderer.render(resolveScene, resolveCam);
     labelRenderer.render(scene, camera);
+    if (needMeasure && measureLabels()) needMeasure = false;
   }
 
   function refresh() {
@@ -1970,7 +2026,7 @@ export function createStory(root) {
     // step with the stylesheet.
     const band = box ? box.width > w * 0.6 : false;
     const padX = box && !band ? Math.round(Math.min(w * 0.32, box.width * 0.72 + 26)) : 0;
-    const padY = box && band ? Math.round(Math.min(h * 0.34, box.height * 0.78)) : 0;
+    const padY = box && band ? Math.round(Math.min(h * 0.26, box.height * 0.7)) : 0;
     if (padX === lastPad.x && padY === lastPad.y && w === lastPad.w && h === lastPad.h) return;
     lastPad = { x: padX, y: padY, w, h };
     camera.aspect = (w + padX) / (h + padY);
@@ -1996,6 +2052,16 @@ export function createStory(root) {
     ao.uProjScale.value = 0.5 * buf.y * camera.projectionMatrix.elements[5];
     ao.uProjInv.value.copy(camera.projectionMatrixInverse);
     labelRenderer.setSize(w, h);
+    // Media queries change the label type sizes, so the boxes need re-reading.
+    for (const t of towers) {
+      t.lw = 0;
+      for (const f of t.floors) f.lw = 0;
+      for (const p of t.ghostParts) p.lw = 0;
+    }
+    needMeasure = true;
+    // A resize changes the free area, so the shot has to be recomputed — unless
+    // the reader has taken the camera somewhere themselves.
+    if (!state.userMoved && chapters[state.chapter]) frameChapter(chapters[state.chapter]);
   }
 
   // --------------------------------------------------------------- hooks --
