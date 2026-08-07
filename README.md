@@ -50,12 +50,22 @@ is taller than most finished buildings in the city. Announced-but-unclosed deals
 scaffolding on the roof; a company changing owner lights a marker rather than adding
 a floor. Click any building to walk up to it and read its storeys by name.
 
+Only the companies a chapter is about keep their lights on. Every other building
+— the rest of the data city included — stands dark with the surrounding fabric,
+so the eye goes to the three or four towers the narration is actually talking
+about, and a lit window is a reliable sign that the building under it is named.
+The lights fade rather than switch, so a chapter change reads as the city handing
+the story on. Walk up to a building and it becomes the only lit thing in the
+frame. The prologue has no cast at all, so the plaza stays dark behind the Bell
+System's monument; the last chapter has the whole skyline.
+
 The architecture is borrowed from Chicago — Sears Tower setbacks, a tapered Hancock
 tube, Aon's limestone slab, Board of Trade deco, Tribune Gothic pinnacles, Wrigley
 terracotta, Marina City cylinders, Monadnock brick, Mies glass boxes. The city sits on a paved plaza inside a
 wider low-rise city that fades into haze, under a low afternoon sun with four
-ridges of hills behind it. Nothing in the surrounding fabric is labelled and its windows are mostly dark,
-so the data buildings stay the heroes while the skyline stops ending in mid-air.
+ridges of hills behind it. Nothing in the surrounding fabric is ever labelled or lit,
+and none of it changes with the year, so the data buildings stay the heroes while
+the skyline stops ending in mid-air.
 
 Every volume is glazed. Windows are drawn with a recess, a sill and a lintel, at
 a fixed world size, so a tall storey gets more rows rather than a stretched grid
@@ -106,11 +116,15 @@ No build step, no bundler, no CDN — a static page of ES modules.
   shadow maps give you the sun, occlusion gives you the corners. The canvas is
   supersampled rather than multisampled, since a resolve pass means MSAA never
   reaches it. `CSS2DRenderer` gives crisp DOM labels, with a
-  screen-space declutter pass that drops any label which would overprint a
-  nearer one or land on the interface. Both tests use real boxes — each label is
-  measured once, and the panels are measured rather than guessed at, since the
-  deal card moves and resizes with its contents. Loaded lazily — the module is
-  only fetched when someone opens it.
+  screen-space declutter pass. Labels are ranked — the focused building, then
+  blocked deals, then nameplates biggest-spender-first — and each one is lifted
+  clear of its neighbours on a growing stem, or slid back in from the edge of
+  the frame on a leaning one, before it is given up as unplaceable. Both tests
+  use real boxes: every label is measured once in a single pass, and the panels
+  are measured rather than guessed at, since the deal card moves and resizes
+  with its contents. The camera fit keeps one nameplate's worth of headroom
+  above the skyline, so framing the tallest building never costs it its name.
+  Loaded lazily — the module is only fetched when someone opens it.
 - **Accessibility**: every value in a chart is also written out in the ledger,
   keyboard focus shows what hover shows, `prefers-reduced-motion` turns off autoplay,
   and the page works without WebGL (story mode simply stays hidden).

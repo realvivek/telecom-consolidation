@@ -554,6 +554,8 @@ export function createStory(root) {
   let lastPad = { x: -1, y: -1, w: -1, h: -1 };
   // The part of the frame the narration card leaves for the city, in NDC.
   const freeNdc = { cx: 0, cy: 0, hx: 1, hy: 1 };
+  // Room kept above the skyline for a nameplate and its stem, in pixels.
+  const LABEL_HEADROOM = 78;
   const disposables = [];
   const track = (x) => { disposables.push(x); return x; };
 
@@ -816,29 +818,22 @@ export function createStory(root) {
   const FAB_H = 1.15;   // world units per storey
   const FAB_COLS = 6;   // windows per tile, same reasoning as the towers
 
-  function fabricFacade(hex, bank) {
+  function fabricFacade(hex) {
     const wall = new THREE.Color(hex);
-    // Two canvases on the same grid: the wall, and the light coming out of it.
-    const paint = (emissive) => {
+    // Glazing but no glow. The surroundings used to carry an emissive map of
+    // their own, which made a lit window mean nothing — the eye had to read the
+    // labels to find out which buildings the chapter was about. Now only the
+    // story's own towers are lit, and the fabric catches the moon and the
+    // street lamps and nothing else.
+    const paint = () => {
       const c = document.createElement('canvas');
       c.width = 16 * FAB_COLS;
       c.height = 16;
       const g = c.getContext('2d');
-      g.fillStyle = emissive ? '#000' : `#${wall.getHexString()}`;
+      g.fillStyle = `#${wall.getHexString()}`;
       g.fillRect(0, 0, c.width, 16);
       for (let col = 0; col < FAB_COLS; col++) {
         const x = col * 16;
-        if (emissive) {
-          const r = noise(bank * 17.3 + col * 5.1);
-          // Well over half dark, and none of them bright: the surroundings are
-          // there to give the skyline depth, not to compete with the buildings
-          // the story is about.
-          if (r < 0.62) continue;
-          const v = 0.16 + ((r - 0.62) / 0.38) ** 1.7 * 0.3;
-          g.fillStyle = `rgb(${Math.round(255 * v)},${Math.round(212 * v)},${Math.round(160 * v)})`;
-          g.fillRect(x + 4, 3, 9, 8);
-          continue;
-        }
         g.fillStyle = `#${wall.clone().lerp(GLAZE, 0.5).getHexString()}`;
         g.fillRect(x + 4, 3, 9, 8);
         g.fillStyle = `#${wall.clone().lerp(new THREE.Color(0xffffff), 0.3).getHexString()}`;
@@ -850,11 +845,10 @@ export function createStory(root) {
       t.anisotropy = renderer.capabilities.getMaxAnisotropy();
       return t;
     };
-    const tex = paint(false);
+    const tex = paint();
 
     const mat = track(new THREE.MeshStandardMaterial({
       map: tex, roughness: 0.94,
-      emissive: 0xffffff, emissiveMap: paint(true), emissiveIntensity: 0.5,
     }));
     mat.onBeforeCompile = (shader) => {
       shader.vertexShader = shader.vertexShader.replace('#include <uv_vertex>', `
@@ -909,8 +903,8 @@ export function createStory(root) {
       // gets out here comes from which windows are lit.
       const tones = [0x2b3441, 0x323b49, 0x28313d, 0x353f4d, 0x2e3744, 0x242c37];
       const geo = track(chamferedBox(0.05, 0.07, 2));
-      const banks = tones.map((c, bi) => {
-        const m = new THREE.InstancedMesh(geo, fabricFacade(c, bi), 260);
+      const banks = tones.map((c) => {
+        const m = new THREE.InstancedMesh(geo, fabricFacade(c), 260);
         m.castShadow = true;
         m.receiveShadow = true;
         m.count = 0;
@@ -1300,6 +1294,15 @@ export function createStory(root) {
   const WIN_W = 0.6 * WIN_COLS;   // world units per tile of windows
   const WIN_H = 0.62;             // world units per window row
 
+  /*  A city where every window is lit has no subject. The chapter names the
+   *  companies it is about, and only those buildings keep their lights on —
+   *  everything else stands in the dark with the surrounding fabric, so the eye
+   *  goes to the three or four towers the narration is actually talking about.
+   *  Not quite to black: a trace of glow keeps glass reading as glass rather
+   *  than as a hole cut out of the skyline. */
+  const LIT_ON = 1.7;
+  const LIT_OFF = 0.05;
+
   function facade(tower, width, height, depth, lift, seed = 0) {
     const round = tower.style.plan === 'round';
     // Walls are barely lit at night, so the value gradient that gave the massing
@@ -1320,8 +1323,10 @@ export function createStory(root) {
     const geo = round ? cylGeo : (tower.style.plan === 'slab' ? slabGeo : boxGeo);
     const mesh = new THREE.Mesh(geo, track(new THREE.MeshStandardMaterial({
       color: colour, map: tex, roughness: 0.82, metalness: 0.02,
-      emissive: 0xffffff, emissiveMap: lit, emissiveIntensity: 1.7,
+      emissive: 0xffffff, emissiveMap: lit, emissiveIntensity: LIT_ON,
     })));
+    // Kept so the chapter can put this building's lights out — see `glow`.
+    tower.mats.push(mesh.material);
     mesh.scale.set(width, height, depth);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
@@ -1344,6 +1349,8 @@ export function createStory(root) {
 
   for (const t of towers) {
     t.tex = track(facadeTexture(t.style));
+    t.mats = [];
+    t.glow = 1;
     // Six lit patterns per tower, dealt out storey by storey.
     t.litTex = Array.from({ length: 6 }, (_, k) =>
       track(facadeTexture(t.style, true, t.x * 0.37 + t.z * 0.11 + k * 4.7)));
@@ -1368,6 +1375,7 @@ export function createStory(root) {
     plinth.userData.tower = t;
     group.add(plinth);
     picks.push(plinth);
+    t.plinth = plinth;
 
     let fi = 0;
     for (const f of t.floors) {
@@ -1497,9 +1505,12 @@ export function createStory(root) {
 
     const el = document.createElement('span');
     el.className = 'tower-label';
-    el.innerHTML = `<b>${t.name}</b>${t.total || t.floors.length
-      ? `<i>${money(t.total)} · ${t.floors.length} ${t.floors.length === 1 ? 'deal' : 'deals'}</i>`
-      : '<i>never bought anyone</i>'}`;
+    // A company whose deals had no headline price is not a company that spent
+    // nothing, so it gets the count on its own rather than "$0B".
+    const deals = `${t.floors.length} ${t.floors.length === 1 ? 'deal' : 'deals'}`;
+    el.innerHTML = `<b>${t.name}</b><i>${t.floors.length
+      ? (t.total ? `${money(t.total)} · ${deals}` : deals)
+      : 'never bought anyone'}</i>`;
     t.label = new CSS2DObject(el);
     t.labelEl = el;
     t.label.visible = false;
@@ -1573,6 +1584,13 @@ export function createStory(root) {
     const framed = [...new Set([...active, ...towers.filter((t) =>
       t.ghosts.some((d) => d.year - GHOST_BEFORE <= ch.yearTo
         && d.year + GHOST_AFTER >= ch.yearFrom))])];
+    // A chapter with no deals of its own is either the prologue or the finale,
+    // and the city itself says which: whatever is standing when it ends. In
+    // 1983 that is nothing, so the plaza stays dark behind the monument; in
+    // 2026 it is everything, so the last chapter gets the whole skyline lit.
+    if (!framed.length) {
+      framed.push(...towers.filter((t) => t.floors.some((f) => f.deal.year <= ch.yearTo)));
+    }
     return { ...ch, active, framed };
   });
 
@@ -1633,22 +1651,37 @@ export function createStory(root) {
     if (!list.length) return;
     const pos = camera.position.clone();
     const quat = camera.quaternion.clone();
-    for (let pass = 0; pass < 6; pass++) {
+    // Converge both ways. The estimate above fits the city's depth against the
+    // horizontal angle, which badly overshoots — a camera looking down at a
+    // shallow pitch foreshortens depth into a fraction of the screen — so
+    // trusting it left the city a smudge in the middle of the frame. Measuring
+    // the projection and closing on a target fill makes the estimate a starting
+    // guess rather than the answer.
+    const TARGET = 0.94;   // of the free region, leaving a hair of margin
+    for (let pass = 0; pass < 9; pass++) {
       aimCamera();
       camera.position.copy(camGoal);
       camera.lookAt(lookGoal);
       camera.updateMatrixWorld(true);
-      let worst = 1;
+      let worst = 0;
+      // The corners of the block, not its centre: a building is wide, and
+      // fitting its centre lets half of it hang off the edge of the frame.
+      const e = BLOCK_W / 2;
       for (const t of list) {
         for (const y of [0.2, t.heightAt(year) + 2.2]) {
-          probe.set(t.x, y, t.z).project(camera);
-          worst = Math.max(worst,
-            Math.abs(probe.x - freeNdc.cx) / freeNdc.hx,
-            Math.abs(probe.y - freeNdc.cy) / freeNdc.hy);
+          for (const dx of [-e, e]) {
+            for (const dz of [-e, e]) {
+              probe.set(t.x + dx, y, t.z + dz).project(camera);
+              worst = Math.max(worst,
+                Math.abs(probe.x - freeNdc.cx) / freeNdc.hx,
+                Math.abs(probe.y - freeNdc.cy) / freeNdc.hy);
+            }
+          }
         }
       }
-      if (worst <= 1.002) break;
-      shot.dist *= Math.min(1.7, worst);
+      if (worst < 0.02) break;
+      if (Math.abs(worst - TARGET) < 0.02) break;
+      shot.dist = Math.max(18, shot.dist * Math.min(1.7, Math.max(0.62, worst / TARGET)));
     }
     camera.position.copy(pos);
     camera.quaternion.copy(quat);
@@ -1708,13 +1741,47 @@ export function createStory(root) {
   const dummy = new THREE.Object3D();
   const walkPoint = new THREE.Vector3();
 
-  function build() {
+  // Which buildings are lit right now, recomputed only when the answer can have
+  // changed — the set is the chapter's cast, or the one building you walked up to.
+  let litKey = '';
+  let litSet = new Set();
+
+  function litTowers() {
+    const ch = chapters[state.chapter];
+    const key = `${state.chapter}|${state.selected ? state.selected.id : ''}`;
+    if (key !== litKey) {
+      litKey = key;
+      // A chapter with no cast is the prologue: nothing in the plaza is the
+      // story yet, so the plaza stays dark and the monument has the stage.
+      litSet = new Set(state.selected ? [state.selected] : ch.framed);
+    }
+    return litSet;
+  }
+
+  function build(dt = 0) {
+    const lit = litTowers();
     for (const t of towers) {
+      // Fade rather than switch, so a chapter change reads as the city handing
+      // the story on rather than as a light being flicked.
+      const goal = lit.has(t) ? 1 : 0;
+      t.glow += (goal - t.glow) * (dt ? 1 - Math.pow(0.004, dt) : 0);
+      if (Math.abs(t.glow - t.lastGlow) > 0.004 || t.lastGlow === undefined) {
+        t.lastGlow = t.glow;
+        const e = LIT_OFF + (LIT_ON - LIT_OFF) * t.glow;
+        for (const m of t.mats) m.emissiveIntensity = e;
+      }
       const alive = state.year >= t.born - 0.01;
       t.group.visible = alive;
       if (!alive) continue;
 
-      let top = PLINTH_H;
+      // A company arriving used to snap a whole plinth into the plaza in one
+      // frame, which reads as the background flickering rather than as a
+      // founding. It grows out of the ground on the same curve a storey does.
+      const birth = Math.max(0.001, easeOut(clamp01((state.year - t.born) / RISE_YEARS)));
+      t.plinth.scale.y = PLINTH_H * birth;
+      t.plinth.position.y = 0.16 + (PLINTH_H * birth) / 2;
+
+      let top = PLINTH_H * birth;
       for (const f of t.floors) {
         const g = Math.min(1, Math.max(0, (state.year - f.deal.year) / RISE_YEARS));
         if (g <= 0) {
@@ -1840,6 +1907,7 @@ export function createStory(root) {
    *  is most of them, and half a company name is worse than none. */
   function inChrome(sx, sy, hw, hh) {
     if (sx - hw < 4 || sx + hw > stageW - 4) return true;
+    if (sy - hh < 4 || sy + hh > stageH - 4) return true;
     for (const r of chromeRects) {
       if (sx + hw > r.x0 && sx - hw < r.x1 && sy + hh > r.y0 && sy - hh < r.y1) return true;
     }
@@ -1880,9 +1948,12 @@ export function createStory(root) {
   function placeLabels(now = performance.now()) {
     measureChrome(now);
     const ch = chapters[state.chapter];
+    // Only the chapter's own companies are named. Naming all sixty-six in the
+    // prologue put "$125B · 7 deals" over a one-storey plinth in 1983, decades
+    // before any of it happened — a caption for a building that is not yet the
+    // story. The Bell System's own caption carries that moment.
     const show = new Set(state.selected ? [state.selected] : ch.framed);
     if (state.hovered) show.add(state.hovered);
-    if (!show.size) for (const t of towers) show.add(t);
 
     // Storey names, for the building you have walked up to. Tall storeys — the
     // deals that actually shaped the company — keep their label when short ones
@@ -1956,7 +2027,11 @@ export function createStory(root) {
         label: t.label,
         el: t.labelEl,
         rank: focus ? 0 : 2,
-        key: camera.position.distanceToSquared(worldPos),
+        // When there is not room for every nameplate, the companies the story is
+        // about keep theirs. Ordering by distance gave the front row to whoever
+        // happened to stand nearest the camera, so Verizon lost its name on a
+        // phone to a company that never bought anyone.
+        key: -(t.total || 0),
         lift: true,
         sx: (projected.x * 0.5 + 0.5) * stageW,
         sy: (-projected.y * 0.5 + 0.5) * stageH,
@@ -1978,12 +2053,17 @@ export function createStory(root) {
       worldPos.y += mono.position.y;
       projected.copy(worldPos).project(camera);
       if (projected.z <= 1) {
-        placed.push({
-          sx: (projected.x * 0.5 + 0.5) * stageW,
-          sy: (-projected.y * 0.5 + 0.5) * stageH,
-          hw: mono.element.offsetWidth / 2 + 8,
-          hh: mono.element.offsetHeight / 2 + 8,
-        });
+        const hw = mono.element.offsetWidth / 2 + 8;
+        const hh = mono.element.offsetHeight / 2 + 8;
+        // It is the widest box in the scene and it stands over the middle of a
+        // plaza the camera is free to sit off to one side of, so it is the one
+        // most likely to hang off an edge. Slide it back in — it has no stem to
+        // keep honest, so nothing is lost by moving it.
+        let sx = (projected.x * 0.5 + 0.5) * stageW;
+        const want = Math.min(Math.max(sx, hw + 4), stageW - hw - 4);
+        mono.element.style.setProperty('--shift', `${Math.round(want - sx)}px`);
+        sx = want;
+        placed.push({ sx, sy: (-projected.y * 0.5 + 0.5) * stageH, hw, hh });
       }
     }
 
@@ -1993,9 +2073,37 @@ export function createStory(root) {
       // horizontal room than the city occupies. Lifting one clear of its
       // neighbour and paying out more stem is what actually fits them: the stem
       // still lands on what it names, so raising the box costs no clarity.
+      // A label centred on its anchor straddles the roof and covers the top of
+      // the building it names. Start high enough that the box clears the roof
+      // entirely, then keep climbing only if a neighbour is in the way.
+      const base = c.lift ? c.hh + 12 : 0;
+      // Slide a label that would cross an edge back into frame rather than
+      // dropping it — losing the tallest building's name because it stands at
+      // the side of the shot is the worst possible thing to drop. The stem
+      // moves the other way so it still lands on the roof it names.
+      let shift = 0;
+      if (c.lift) {
+        if (c.sx - c.hw < 4) shift = 4 - (c.sx - c.hw);
+        else if (c.sx + c.hw > stageW - 4) shift = (stageW - 4) - (c.sx + c.hw);
+        if (shift) { c.sx += shift; c.el.style.setProperty('--shift', `${shift}px`); }
+        else c.el.style.setProperty('--shift', '0px');
+      }
+      // Never lift a box out of the frame. The tallest building in the city has
+      // its roof near the top of the shot by definition, so the lift that clears
+      // its roof is exactly the one that pushes its name off the screen.
+      const ceiling = Math.max(0, c.sy - c.hh - 6);
+      const ladder = (c.lift ? LIFTS.map((e) => base + e) : [0]).filter((v) => v <= ceiling);
+      // Above the roof is the preference, not the requirement. When the building
+      // reaches the top of the shot there is nothing above it but the toolbar,
+      // so come back down and sit over its own top floors — a name printed on
+      // the building it names beats no name at all.
+      if (c.lift) {
+        for (const v of [Math.round(base * 0.55), 0]) if (v <= ceiling) ladder.push(v);
+      }
+      if (!ladder.length) ladder.push(Math.max(0, ceiling));
       let lift = 0;
       let clash = true;
-      for (const tryLift of (c.lift ? LIFTS : [0])) {
+      for (const tryLift of ladder) {
         const sy = c.sy - tryLift;
         if (inChrome(c.sx, sy, c.hw, c.hh)) continue;
         if (placed.some((p) => Math.abs(p.sx - c.sx) < p.hw + c.hw
@@ -2035,7 +2143,7 @@ export function createStory(root) {
       controls.target.lerp(lookGoal, 1 - Math.pow(0.002, dt));
     }
     controls.update();
-    build();
+    build(dt);
     traffic(dt);
     placeLabels();
     ao.uProjInv.value.copy(camera.projectionMatrixInverse);
@@ -2142,13 +2250,18 @@ export function createStory(root) {
     else camera.clearViewOffset();
     camera.updateProjectionMatrix();
     ao.uProjInv.value.copy(camera.projectionMatrixInverse);
-    // Same region, in NDC, for the fit to aim at.
+    // Same region, in NDC, for the fit to aim at. The top of it is held back by
+    // one nameplate: a building's name stands above its roof, so a fit that puts
+    // the roof at the top of the frame has, by construction, put the name off
+    // the screen — which is how the tallest building in the city, the one the
+    // whole chart is about, was the one that lost its label on a phone.
     const left = padX ? (2 * padX) / w - 1 : -1;
     const bottom = padY ? 1 - (2 * (h - padY)) / h : -1;
+    const top = 1 - (2 * LABEL_HEADROOM) / h;
     freeNdc.cx = (left + 1) / 2;
     freeNdc.hx = Math.max(0.12, (1 - left) / 2);
-    freeNdc.cy = (bottom + 1) / 2;
-    freeNdc.hy = Math.max(0.12, (1 - bottom) / 2);
+    freeNdc.cy = (bottom + top) / 2;
+    freeNdc.hy = Math.max(0.12, (top - bottom) / 2);
     if (refit && !state.userMoved && chapters[state.chapter]) frameChapter(chapters[state.chapter]);
   }
 
