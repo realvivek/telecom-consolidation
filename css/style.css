@@ -476,10 +476,20 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
   border-radius: 4px; padding: 6px 11px 7px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
+/* The stem: box down to roof, always drawn, always reaching the whole way. Its
+   foot carries a dot, because a line that fades out over a city of other roofs
+   leaves you guessing which one it meant. */
 .tower-label::after {
   content: ''; position: absolute; left: calc(50% - var(--shift, 0px)); top: 100%;
-  width: 1px; height: calc(15px + var(--lift, 0px)); margin-left: -0.5px;
-  background: linear-gradient(rgba(180, 200, 224, 0.4), rgba(180, 200, 224, 0));
+  width: 1px; height: var(--stem, 15px); margin-left: -0.5px;
+  background: linear-gradient(rgba(180, 200, 224, 0.75), rgba(180, 200, 224, 0.5));
+}
+.tower-label::before {
+  content: ''; position: absolute; left: calc(50% - var(--shift, 0px));
+  top: calc(100% + var(--stem, 15px));
+  width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px;
+  border-radius: 50%; background: rgba(198, 216, 236, 0.95);
+  box-shadow: 0 0 0 2px rgba(10, 14, 20, 0.6);
 }
 .tower-label b {
   display: block; font-size: 12.5px; font-weight: 600; color: var(--s-ink);
@@ -490,12 +500,22 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
   color: var(--s-ink-2); font-family: var(--s-mono);
   font-variant-numeric: tabular-nums; line-height: 1.15; letter-spacing: 0.02em;
 }
+/* A deal that died, printed inside the plate of the company that tried it. */
+.tower-label s {
+  display: block; text-decoration: none; margin: 5px auto 0; padding-top: 5px;
+  border-top: 1px solid rgba(255, 107, 90, 0.35);
+  font-family: var(--s-mono); font-size: 9.5px; letter-spacing: 0.02em;
+  color: #ff9a8a; font-variant-numeric: tabular-nums;
+  /* Wraps rather than widening the plate: a wide box is what pushes a
+     neighbouring building's name off a phone. */
+  white-space: normal; max-width: 17ch; line-height: 1.35;
+}
+.tower-label.has-ghost { border-color: rgba(255, 107, 90, 0.45); }
 .tower-label.is-focus { background: rgba(127, 176, 232, 0.16); border-color: rgba(127, 176, 232, 0.55); }
 .tower-label.is-focus b { color: #fff; }
 .tower-label.is-focus i { color: #bcd6f2; }
 .tower-label--monument { max-width: 24rem; white-space: normal; }
 .tower-label--monument i { white-space: normal; line-height: 1.4; margin-top: 4px; font-family: inherit; letter-spacing: 0; }
-.tower-label--monument::after { display: none; }
 
 .floor-label {
   position: relative; display: block; white-space: nowrap;
@@ -707,16 +727,18 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
      or two survive the declutter no matter how far the camera pulls back.
      Smaller boxes are what actually gets more names on screen. */
   .tower-label { padding: 4px 8px 5px; border-radius: 3px; }
-  .tower-label--monument { max-width: 15rem; }
-  .tower-label--monument i { font-size: 9.5px; line-height: 1.35; }
+  /* The Bell System's caption is two lines of prose, and on a phone those two
+     lines are half the width of the frame for the first three years — which is
+     three years of some other company having nowhere to put its name. The card
+     is already saying it; the monument just needs to be identified. */
+  .tower-label--monument { max-width: 11rem; }
+  .tower-label--monument i { display: none; }
   .tower-label b { font-size: 11px; }
   .tower-label i { font-size: 9px; margin-top: 1px; }
   .tower-label::after { height: calc(10px + var(--lift, 0px)); }
   .floor-label { padding: 3px 8px 4px; }
   .floor-label b { font-size: 10.5px; }
   .floor-label i { font-size: 9px; }
-  .ghost-label b { font-size: 10.5px; }
-  .ghost-label i { font-size: 9px; }
 
   .story-bar { gap: 10px; padding: 10px 12px 12px; flex-wrap: nowrap; }
   .story-dots {
@@ -799,32 +821,6 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
 }
 
 /* A blocked deal, named only while it is standing in the sky. */
-.ghost-label {
-  position: relative; display: block; white-space: nowrap; text-align: center;
-  /* Raised and slid by the same declutter pass as the nameplates, with a stem
-     that grows and leans to keep it attached to the storey it names. */
-  translate: var(--shift, 0px) calc(-1 * var(--lift, 0px));
-  background: rgba(24, 16, 15, 0.82);
-  border: 1px solid rgba(255, 107, 90, 0.5);
-  border-radius: 3px; padding: 4px 10px 5px;
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
-}
-.ghost-label::after {
-  content: ''; position: absolute; left: calc(50% - var(--shift, 0px)); top: 100%;
-  width: 1px; height: var(--lift, 0px); margin-left: -0.5px;
-  background: linear-gradient(rgba(255, 107, 90, 0.55), rgba(255, 107, 90, 0));
-}
-.ghost-label b {
-  display: block; font-size: 11.5px; font-weight: 600; color: #ffd9d2;
-  letter-spacing: -0.006em; line-height: 1.15;
-}
-.ghost-label i {
-  display: block; font-style: normal; font-size: 10px; margin-top: 1px;
-  color: rgba(255, 154, 138, 0.9); line-height: 1.15;
-  font-variant-numeric: tabular-nums; text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
 /* ------------------------------------------------------- bubble map ---- */
 .viewswitch {
   display: inline-flex; gap: 2px; margin: 0 0 16px;

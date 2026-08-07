@@ -24,7 +24,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
 import {
-  CHAPTERS, DEALS, START_YEAR,
+  CHAPTERS, DEALS, START_YEAR, END_YEAR,
   byId, finalName, nameAt, FAMILIES, money, yr,
 } from './model.js';
 
@@ -37,9 +37,12 @@ const TOWER_W = 3.0;
 const ASSET_W = 2.25;        // partial asset buys are set back from the façade
 
 const GRID_COLS = 4;
-const GRID_STEP = 9.2;       // block pitch: building + pavement + street
+// Block pitch: building + pavement + street. Generous, because the labels need
+// somewhere to stand as much as the buildings do — shoulder to shoulder, a
+// nameplate could not sit over its own roof without landing on its neighbour's.
+const GRID_STEP = 10.6;
 const FAB_BLOCKS = 8;        // how far the street grid and its blocks run out
-const BLOCK_W = 6.4;         // pavement slab around each building
+const BLOCK_W = 7.2;         // pavement slab around each building
 const ROAD_W = 2.8;
 const MONUMENT_Z = -27.5;   // behind the plaza, so the empty 1983 city still has a subject
 
@@ -1299,9 +1302,27 @@ export function createStory(root) {
    *  everything else stands in the dark with the surrounding fabric, so the eye
    *  goes to the three or four towers the narration is actually talking about.
    *  Not quite to black: a trace of glow keeps glass reading as glass rather
-   *  than as a hole cut out of the skyline. */
+   *  than as a hole cut out of the skyline.
+   *
+   *  Killing the windows is not enough on its own. A limestone slab is a pale
+   *  stone whether or not anyone is home, so with its lights out it still
+   *  caught the moon and stood in front of AT&T looking like the brightest
+   *  thing on the plaza — a hero object with no name on it. The walls go down
+   *  with the windows, toward the same cool tone the surrounding fabric is
+   *  painted in, so an unlit building recedes into the fabric instead of
+   *  competing with the story from the front row. */
   const LIT_ON = 1.7;
   const LIT_OFF = 0.05;
+  const NIGHT_TONE = new THREE.Color(0x2b3441);
+
+  function collectMaterials(group) {
+    const out = [];
+    group.traverse((o) => {
+      const m = o.material;
+      if (m && m.isMeshStandardMaterial && !out.includes(m)) out.push(m);
+    });
+    return out;
+  }
 
   function facade(tower, width, height, depth, lift, seed = 0) {
     const round = tower.style.plan === 'round';
@@ -1325,8 +1346,6 @@ export function createStory(root) {
       color: colour, map: tex, roughness: 0.82, metalness: 0.02,
       emissive: 0xffffff, emissiveMap: lit, emissiveIntensity: LIT_ON,
     })));
-    // Kept so the chapter can put this building's lights out — see `glow`.
-    tower.mats.push(mesh.material);
     mesh.scale.set(width, height, depth);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
@@ -1458,15 +1477,21 @@ export function createStory(root) {
       scar.visible = false;
       group.add(scar);
 
-      const el = document.createElement('span');
-      el.className = 'ghost-label';
-      el.innerHTML = `<b>${d.target ? nameAt(d.target, d.year) : d.title}</b>`
-        + `<i>${money(d.valueB)} · blocked</i>`;
-      const label = new CSS2DObject(el);
-      label.visible = false;
-      group.add(label);
+      /*  No second label. A blocked deal used to get a red box of its own, and
+       *  on a narrow screen that box had to displace a nameplate to stand
+       *  anywhere — so the company it belonged to lost its name for the two
+       *  years the bid was in the sky, and got it back afterwards. That is the
+       *  "labels come and go" flicker, and it is not a placement problem: two
+       *  labels were competing to point at one building. The failed bid is a
+       *  line inside that building's own nameplate instead. One building, one
+       *  label, one stem — nothing to displace and nothing to lose. */
+      // Short name: the plate is already carrying a company name, and "Sprint
+      // (United Telecom)" on a second line makes the box wider than a third of
+      // a phone — which costs some other building its name entirely.
+      const target = (d.target ? nameAt(d.target, d.year) : d.title).replace(/\s*\(.*\)$/, '');
+      const caption = `✕ ${target} · ${money(d.valueB)} blocked`;
 
-      return { deal: d, node, shell, lines, hit, scar, label, h };
+      return { deal: d, node, shell, lines, hit, scar, caption, h };
     });
 
     // Announced, not yet closed: scaffolding on the roof.
@@ -1508,13 +1533,26 @@ export function createStory(root) {
     // A company whose deals had no headline price is not a company that spent
     // nothing, so it gets the count on its own rather than "$0B".
     const deals = `${t.floors.length} ${t.floors.length === 1 ? 'deal' : 'deals'}`;
-    el.innerHTML = `<b>${t.name}</b><i>${t.floors.length
+    t.plate = `<b>${t.name}</b><i>${t.floors.length
       ? (t.total ? `${money(t.total)} · ${deals}` : deals)
       : 'never bought anyone'}</i>`;
+    el.innerHTML = t.plate;
     t.label = new CSS2DObject(el);
     t.labelEl = el;
     t.label.visible = false;
     group.add(t.label);
+
+    // Everything the chapter can put out, gathered once the group is complete
+    // so no crown or string course is missed. Each keeps its own colour, so
+    // the dimming is a fade between two known states rather than a repaint.
+    for (const o of collectMaterials(group)) {
+      t.mats.push({
+        mat: o,
+        lit: o.color.clone(),
+        dark: o.color.clone().multiplyScalar(0.34).lerp(NIGHT_TONE, 0.45),
+        glow: o.emissiveIntensity,
+      });
+    }
   }
 
   // Rooftop plant, and a wisp of steam from a couple of them, which is most of
@@ -1551,8 +1589,12 @@ export function createStory(root) {
   monument.position.set(0, 0, MONUMENT_Z);
   scene.add(monument);
   {
+    // Lit like a monument is lit, from the ground. It is the only subject the
+    // first two years have, and in a fixed wide shot of a dark plaza an unlit
+    // slab is a shape you cannot find.
     const slab = new THREE.Mesh(boxGeo, track(new THREE.MeshStandardMaterial({
       color: COLOR.stone, roughness: 0.9,
+      emissive: 0xbcd0ea, emissiveIntensity: 0.22,
     })));
     slab.scale.set(13, 1.6, 6.5);
     slab.position.y = 0.8;
@@ -1581,9 +1623,10 @@ export function createStory(root) {
     // the chapter. A deal that fails is a beat in the story, and it cannot be
     // one if the camera frames it out of shot — which is what happened to
     // EchoStar's bid for DirecTV.
-    const framed = [...new Set([...active, ...towers.filter((t) =>
+    const ghostOwners = new Set(towers.filter((t) =>
       t.ghosts.some((d) => d.year - GHOST_BEFORE <= ch.yearTo
-        && d.year + GHOST_AFTER >= ch.yearFrom))])];
+        && d.year + GHOST_AFTER >= ch.yearFrom)));
+    const framed = [...new Set([...active, ...ghostOwners])];
     // A chapter with no deals of its own is either the prologue or the finale,
     // and the city itself says which: whatever is standing when it ends. In
     // 1983 that is nothing, so the plaza stays dark behind the monument; in
@@ -1591,7 +1634,7 @@ export function createStory(root) {
     if (!framed.length) {
       framed.push(...towers.filter((t) => t.floors.some((f) => f.deal.year <= ch.yearTo)));
     }
-    return { ...ch, active, framed };
+    return { ...ch, active, framed, ghostOwners };
   });
 
   const state = {
@@ -1616,8 +1659,10 @@ export function createStory(root) {
       minZ = Math.min(minZ, t.z - BLOCK_W / 2); maxZ = Math.max(maxZ, t.z + BLOCK_W / 2);
       maxH = Math.max(maxH, t.heightAt(year));
     }
-    // Before the breakup the plaza is nearly empty, so keep the monument in shot.
-    if (year < 1985.5) { minZ = Math.min(minZ, MONUMENT_Z - 5); maxZ = Math.max(maxZ, MONUMENT_Z + 5); }
+    // The monument is in every frame of the story's first two years, so it is
+    // part of what the one fixed shot has to hold.
+    minZ = Math.min(minZ, MONUMENT_Z - 4);
+    maxZ = Math.max(maxZ, MONUMENT_Z + 4);
     shot.centre.set((minX + maxX) / 2, maxH * 0.46, (minZ + maxZ) / 2);
 
     // Fit against the area actually left over for the city, not the whole
@@ -1657,45 +1702,70 @@ export function createStory(root) {
     // trusting it left the city a smudge in the middle of the frame. Measuring
     // the projection and closing on a target fill makes the estimate a starting
     // guess rather than the answer.
-    const TARGET = 0.94;   // of the free region, leaving a hair of margin
-    for (let pass = 0; pass < 9; pass++) {
+    // Centring the city's bounding box in the frame wastes the half of the
+    // screen it does not use: a plaza seen at a shallow angle is a wide, shallow
+    // band, so a fit that centres it leaves a dead strip above and another
+    // below. Measure the projected extent instead and solve for two things at
+    // once — a distance that fills the free region, and a look-at height that
+    // puts the city in the middle of it. Fitted at the city's final height, so
+    // the frame is built for the skyline that will be there in 2026 and nothing
+    // ever grows out of it.
+    const TARGET = stageW < 760 ? 0.94 : 0.92;
+    const e = BLOCK_W / 2;
+    const vTan = Math.tan((camera.fov * Math.PI) / 360);
+    for (let pass = 0; pass < 14; pass++) {
       aimCamera();
       camera.position.copy(camGoal);
       camera.lookAt(lookGoal);
       camera.updateMatrixWorld(true);
-      let worst = 0;
+      let wide = 0;
+      let lo = Infinity;
+      let hi = -Infinity;
       // The corners of the block, not its centre: a building is wide, and
       // fitting its centre lets half of it hang off the edge of the frame.
-      const e = BLOCK_W / 2;
       for (const t of list) {
         for (const y of [0.2, t.heightAt(year) + 2.2]) {
           for (const dx of [-e, e]) {
             for (const dz of [-e, e]) {
               probe.set(t.x + dx, y, t.z + dz).project(camera);
-              worst = Math.max(worst,
-                Math.abs(probe.x - freeNdc.cx) / freeNdc.hx,
-                Math.abs(probe.y - freeNdc.cy) / freeNdc.hy);
+              wide = Math.max(wide, Math.abs(probe.x - freeNdc.cx) / freeNdc.hx);
+              const ny = (probe.y - freeNdc.cy) / freeNdc.hy;
+              lo = Math.min(lo, ny);
+              hi = Math.max(hi, ny);
             }
           }
         }
       }
-      if (worst < 0.02) break;
-      if (Math.abs(worst - TARGET) < 0.02) break;
-      shot.dist = Math.max(18, shot.dist * Math.min(1.7, Math.max(0.62, worst / TARGET)));
+      if (!Number.isFinite(lo)) break;
+      const worst = Math.max(wide, (hi - lo) / 2);
+      const mid = (hi + lo) / 2;
+      // Raising the look-at point pushes the scene down the screen, so the sign
+      // is straight: a city sitting too high wants a higher look-at.
+      shot.centre.y += mid * freeNdc.hy * shot.dist * vTan * 1.1;
+      if (worst > 0.02) shot.dist = Math.max(18, shot.dist * Math.min(1.7, Math.max(0.62, worst / TARGET)));
+      if (Math.abs(worst - TARGET) < 0.015 && Math.abs(mid) < 0.02) break;
     }
     camera.position.copy(pos);
     camera.quaternion.copy(quat);
     camera.updateMatrixWorld(true);
   }
 
-  function frameChapter(ch) {
-    // Before any deal has closed every building is a single storey, so framing
-    // the whole plaza makes them specks. Come in on the monument and the blocks
-    // around it instead — that is what the chapter is actually about.
-    const near = ch.framed.length
-      ? ch.framed
-      : towers.filter((t) => Math.abs(t.x) <= GRID_STEP && Math.abs(t.z) <= GRID_STEP);
-    fitTo(near, ch.yearTo, ch.framed.length ? 1.35 : 1.05);
+  /*  One shot, held for the whole story.
+   *
+   *  Re-framing on every chapter meant the city jumped from one composition to
+   *  another eight times, and each jump moved every label on the screen — which
+   *  is what made names come and go as the timeline ran. Worse, a shot composed
+   *  for a chapter's own buildings would be cut off by the next chapter's, so
+   *  AT&T grew straight off the top of a phone.
+   *
+   *  So the camera is fitted once, to the whole plaza at its final height, and
+   *  then left alone. Nothing can ever grow out of frame, because the frame was
+   *  built for the finished city; every building keeps the same place on the
+   *  screen from 1983 to 2026; and the story is told by which buildings are lit
+   *  and named, not by where the camera is pointing. The city fills a frame that
+   *  was always waiting for it. */
+  function frameCity() {
+    fitTo(towers, END_YEAR, 1.06);
     shot.azimuth = 0;
     shot.pitch = 0.21;
     spin = 0;
@@ -1731,7 +1801,11 @@ export function createStory(root) {
     const ch = chapters[state.chapter];
     state.year = ch.yearFrom;
     state.playing = play && ch.yearTo > ch.yearFrom;
-    frameChapter(ch);
+    // Orbiting holds within a chapter but does not survive one: a new chapter
+    // returns to the city shot, so a single drag in 1984 cannot leave the next
+    // four decades looking at the back of a building.
+    state.userMoved = false;
+    frameCity();
     onChapterChange(ch, state.chapter);
     refresh();
   }
@@ -1746,20 +1820,46 @@ export function createStory(root) {
   let litKey = '';
   let litSet = new Set();
 
-  function litTowers() {
+  /*  The chapter's cast: the buildings that are lit, and the buildings that are
+   *  named. It is deliberately one list and not two.
+   *
+   *  A phone has room for about six nameplates. Letting all fourteen try meant
+   *  the ones that lost were lit but nameless, and which ones lost changed as
+   *  companies were founded mid-chapter — a building going dark halfway through
+   *  a paragraph. So the cast is capped up front, by what each company spent,
+   *  and it does not change until the chapter does. */
+  function castTowers() {
     const ch = chapters[state.chapter];
-    const key = `${state.chapter}|${state.selected ? state.selected.id : ''}`;
+    const room = stageW < 760 ? 6 : 99;
+    const key = `${state.chapter}|${state.selected ? state.selected.id : ''}|${room}`;
     if (key !== litKey) {
       litKey = key;
       // A chapter with no cast is the prologue: nothing in the plaza is the
       // story yet, so the plaza stays dark and the monument has the stage.
-      litSet = new Set(state.selected ? [state.selected] : ch.framed);
+      litSet = new Set(state.selected ? [state.selected] : ch.framed.slice()
+        // A company whose bid was blocked in this chapter is the beat of the
+        // chapter, so it keeps its place whatever it spent.
+        .sort((a, b) => (ch.ghostOwners.has(a) ? 0 : 1) - (ch.ghostOwners.has(b) ? 0 : 1)
+          || (b.total || 0) - (a.total || 0))
+        .slice(0, room));
     }
     return litSet;
   }
 
+  // Lit is the cast minus anything the declutter pass could not find room to
+  // name, so a lit window always has a name over it. The cast itself is never
+  // narrowed: a building that loses its slot has to be able to win it back, and
+  // it cannot do that if losing once takes it out of the running.
+  function litNow() {
+    const cast = castTowers();
+    if (!unplaceable.size) return cast;
+    const out = new Set(cast);
+    for (const t of unplaceable) out.delete(t);
+    return out;
+  }
+
   function build(dt = 0) {
-    const lit = litTowers();
+    const lit = litNow();
     for (const t of towers) {
       // Fade rather than switch, so a chapter change reads as the city handing
       // the story on rather than as a light being flicked.
@@ -1767,8 +1867,11 @@ export function createStory(root) {
       t.glow += (goal - t.glow) * (dt ? 1 - Math.pow(0.004, dt) : 0);
       if (Math.abs(t.glow - t.lastGlow) > 0.004 || t.lastGlow === undefined) {
         t.lastGlow = t.glow;
-        const e = LIT_OFF + (LIT_ON - LIT_OFF) * t.glow;
-        for (const m of t.mats) m.emissiveIntensity = e;
+        const k = LIT_OFF / LIT_ON + (1 - LIT_OFF / LIT_ON) * t.glow;
+        for (const m of t.mats) {
+          m.mat.emissiveIntensity = m.glow * k;
+          m.mat.color.copy(m.dark).lerp(m.lit, t.glow);
+        }
       }
       const alive = state.year >= t.born - 0.01;
       t.group.visible = alive;
@@ -1802,11 +1905,13 @@ export function createStory(root) {
       t.roof.position.y = 0.16 + top + 0.09;
       // Announced a year out, blocked on the year itself, gone a year after —
       // so at any moment only the deals actually in play are in the sky.
+      t.liveGhost = null;
       for (const p of t.ghostParts) {
         const dy = state.year - p.deal.year;
         const rise = clamp01((dy + GHOST_BEFORE) / GHOST_BEFORE);
         const fall = clamp01(dy / GHOST_AFTER);
         const live = rise > 0 && fall < 1;
+        if (live) t.liveGhost = p;
         p.node.visible = live;
         p.hit.visible = live;
         if (live) {
@@ -1821,8 +1926,6 @@ export function createStory(root) {
         }
         p.scar.visible = dy >= 0.85;
         if (p.scar.visible) p.scar.position.y = 0.16 + top + 0.035;
-        p.label.visible = false;   // placed by the declutter pass
-        p.label.position.set(0, 0.16 + top + p.h * 0.6 + 0.4, 0);
       }
       for (const p of t.pendingParts) p.node.visible = state.year >= p.deal.year - 0.6;
       for (const b of t.beaconParts) b.mesh.visible = state.year >= b.deal.year;
@@ -1873,6 +1976,39 @@ export function createStory(root) {
   // One candidate list and one occupied list for every kind of label.
   const floorCandidates = [];
   const placed = [];
+  // Cast buildings whose nameplate could not be placed at all. They lose their
+  // lights too, so "lit" and "named" never disagree — see `litTowers`.
+  const unplaceable = new Set();
+  const namedNow = new Set();
+  const unnamedNow = new Set();
+
+  /** The x nearest `want` at which a box of this size sits clear of everything
+   *  already placed and of the interface, or null if the row is full. Exact
+   *  rather than sampled: collect the intervals this row is blocked in, then
+   *  take the closest point outside all of them. */
+  function freeX(sy, hw, hh, want) {
+    const lo = hw + 4;
+    const hi = stageW - hw - 4;
+    if (hi < lo) return null;
+    const blocked = [];
+    for (const p of placed) {
+      if (Math.abs(p.sy - sy) < p.hh + hh) blocked.push([p.sx - p.hw - hw, p.sx + p.hw + hw]);
+    }
+    for (const r of chromeRects) {
+      if (sy + hh > r.y0 && sy - hh < r.y1) blocked.push([r.x0 - hw, r.x1 + hw]);
+    }
+    const ok = (x) => x >= lo - 0.01 && x <= hi + 0.01
+      && !blocked.some(([a, b]) => x > a + 0.01 && x < b - 0.01);
+    if (ok(want)) return want;
+    let best = null;
+    const offer = (x) => {
+      if (ok(x) && (best === null || Math.abs(x - want) < Math.abs(best - want))) best = x;
+    };
+    for (const [a, b] of blocked) { offer(a - 0.5); offer(b + 0.5); }
+    offer(lo);
+    offer(hi);
+    return best;
+  }
 
   /** The narration panel, the deal feed, the deal card and the transport bar own
    *  their corners; a label that would land on one is dropped rather than
@@ -1929,13 +2065,37 @@ export function createStory(root) {
     for (const t of towers) {
       if (t.labelEl) pairs.push([t, t.labelEl]);
       for (const f of t.floors) if (f.label) pairs.push([f, f.label.element]);
-      for (const p of t.ghostParts) if (p.label) pairs.push([p, p.label.element]);
     }
     if (!pairs.length || !pairs[0][1].isConnected) return false;
     const was = pairs.map(([, el]) => el.style.display);
     for (const [, el] of pairs) el.style.display = '';
     for (const [store, el] of pairs) {
       if (el.offsetWidth) { store.lw = el.offsetWidth; store.lh = el.offsetHeight; }
+    }
+    /*  A company with a failed bid grows a line in its plate for the two years
+     *  the bid is in the sky. Both sizes are measured, because the layout has to
+     *  be the same size in every year of a chapter or it is not a layout: a
+     *  plate that grows mid-chapter bumps a neighbour off the screen, and one
+     *  that shrinks lets it back on. The chapter picks which size to reserve —
+     *  reserving the tall one always would cost some other building its name in
+     *  every chapter, to hold room for a bid that is not in this one. */
+    for (const t of towers) {
+      t.lwPlain = t.lw; t.lhPlain = t.lh;
+      t.lwGhost = t.lw; t.lhGhost = t.lh;
+      if (!t.ghostParts.length || !t.labelEl.offsetWidth) continue;
+      const now = t.labelEl.innerHTML;
+      // Every bid it ever made, since any of them could be the one on screen.
+      for (const p of t.ghostParts) {
+        t.labelEl.innerHTML = t.plate + `<s>${p.caption}</s>`;
+        t.lwGhost = Math.max(t.lwGhost, t.labelEl.offsetWidth);
+        t.lhGhost = Math.max(t.lhGhost, t.labelEl.offsetHeight);
+      }
+      t.labelEl.innerHTML = now;
+      // The plain size may have been measured with a caption already in place.
+      t.labelEl.innerHTML = t.plate;
+      t.lwPlain = t.labelEl.offsetWidth || t.lwPlain;
+      t.lhPlain = t.labelEl.offsetHeight || t.lhPlain;
+      t.labelEl.innerHTML = now;
     }
     pairs.forEach(([, el], i) => { el.style.display = was[i]; });
     return true;
@@ -1952,8 +2112,11 @@ export function createStory(root) {
     // prologue put "$125B · 7 deals" over a one-storey plinth in 1983, decades
     // before any of it happened — a caption for a building that is not yet the
     // story. The Bell System's own caption carries that moment.
-    const show = new Set(state.selected ? [state.selected] : ch.framed);
+    // The same cast that is lit, so the two can never disagree.
+    const show = new Set(castTowers());
     if (state.hovered) show.add(state.hovered);
+    namedNow.clear();
+    unnamedNow.clear();
 
     // Storey names, for the building you have walked up to. Tall storeys — the
     // deals that actually shaped the company — keep their label when short ones
@@ -1984,54 +2147,71 @@ export function createStory(root) {
         });
       }
 
-      // A blocked deal only exists for a couple of years, so while it is in the
-      // sky it gets named — that window is the whole point of it being there.
-      for (const p of t.ghostParts) {
-        if (!p.node.visible || !t.group.visible) { p.label.visible = false; continue; }
-        worldPos.set(t.x, p.label.position.y, t.z);
-        projected.copy(worldPos).project(camera);
-        if (projected.z > 1 || Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1) {
-          p.label.visible = false;
-          continue;
-        }
-        const size = sizeOf(p, p.label.element, 150, 34);
-        floorCandidates.push({
-          label: p.label,
-          el: p.label.element,
-          rank: 1,            // transient and the point of the moment
-          key: 0,
-          lift: true,
-          sx: (projected.x * 0.5 + 0.5) * stageW,
-          sy: (-projected.y * 0.5 + 0.5) * stageH,
-          hw: size.lw / 2 + 6,
-          hh: size.lh / 2 + 6,
-        });
-      }
     }
 
-    // Tower nameplates.
+    /*  Tower nameplates.
+     *
+     *  The box hangs at the height the company will finally reach, not at the
+     *  height it has today. Tracking the roof meant every nameplate crept up
+     *  the screen for forty years, and a label creeping past its neighbour
+     *  crosses it, gets bumped, and comes back — which is what "labels come and
+     *  go" was. Pinned to the final roofline the whole layout is computed
+     *  against fixed points and simply does not move. The stem carries the
+     *  honesty instead: it runs from the box down to wherever the building has
+     *  actually got to, and shortens year by year as the building grows up to
+     *  meet its own name. */
     for (const t of towers) {
-      if (!show.has(t) || !t.group.visible) { t.label.visible = false; continue; }
-      t.label.position.set(0, 0.16 + t.heightAt(state.year) + 1.3, 0);
+      if (!show.has(t)) { t.label.visible = false; continue; }
+      // A company founded halfway through a chapter used to arrive as an extra
+      // box that had to be fitted in, and fitting it in pushed somebody else
+      // off the screen. Its slot is reserved from the start of the chapter and
+      // simply stands empty until the company exists.
+      const unborn = !t.group.visible;
+      // A failed bid is a line inside the plate, not a plate of its own.
+      const caption = t.liveGhost ? t.liveGhost.caption : '';
+      if (caption !== t.captionNow) {
+        t.captionNow = caption;
+        t.labelEl.innerHTML = t.plate + (caption ? `<s>${caption}</s>` : '');
+        t.labelEl.classList.toggle('has-ghost', !!caption);
+        needMeasure = true;   // the box just changed size
+      }
+      t.label.position.set(0, 0.16 + t.height + 1.3, 0);
       t.group.getWorldPosition(worldPos);
       worldPos.y = t.label.position.y;
       projected.copy(worldPos).project(camera);
       if (projected.z > 1 || Math.abs(projected.x) > 1.1 || Math.abs(projected.y) > 1.1) {
         t.label.visible = false;
+        unnamedNow.add(t);
         continue;
       }
-      const size = sizeOf(t, t.labelEl, 150, 42);
+      // Where the building has actually reached, so the stem can run down to it.
+      worldPos.y = 0.16 + t.heightAt(state.year) + 0.25;
+      probe.copy(worldPos).project(camera);
+      const roofY = (-probe.y * 0.5 + 0.5) * stageH;
+      // The size this chapter reserves: with room for a blocked-bid line only
+      // in the chapters where this company has one.
+      const ghosty = ch.ghostOwners.has(t);
+      const size = t.lwPlain
+        ? { lw: ghosty ? t.lwGhost : t.lwPlain, lh: ghosty ? t.lhGhost : t.lhPlain }
+        : sizeOf(t, t.labelEl, 150, 42);
       const focus = t === state.hovered || t === state.selected;
       t.labelEl.classList.toggle('is-focus', focus);
       floorCandidates.push({
         label: t.label,
         el: t.labelEl,
+        tower: t,
+        roofY,
+        boxH: size.lh,
+        hidden: unborn,
         rank: focus ? 0 : 2,
         // When there is not room for every nameplate, the companies the story is
-        // about keep theirs. Ordering by distance gave the front row to whoever
-        // happened to stand nearest the camera, so Verizon lost its name on a
-        // phone to a company that never bought anyone.
-        key: -(t.total || 0),
+        // about keep theirs: the ones whose bid was blocked in this chapter
+        // first, then the biggest spenders. Ordering by distance gave the front
+        // row to whoever happened to stand nearest the camera, so Verizon lost
+        // its name on a phone to a company that never bought anyone. The order
+        // is drawn from the chapter, not from the year, so it holds still while
+        // the chapter runs.
+        key: (ch.ghostOwners.has(t) ? -1e12 : 0) - (t.total || 0),
         lift: true,
         sx: (projected.x * 0.5 + 0.5) * stageW,
         sy: (-projected.y * 0.5 + 0.5) * stageH,
@@ -2045,25 +2225,32 @@ export function createStory(root) {
     // print straight across a nameplate — which is exactly what it did.
     placed.length = 0;
 
-    // The Bell System's caption is wide, multi-line and on screen for the first
-    // two years. It is never placed, so reserve its box before anything else.
+    // The Bell System's caption is the widest box in the scene and it is the
+    // only thing the first two years have to look at, so it is placed first —
+    // through the same search as everything else, with a stem down to the slab.
+    // Reserving its box where it happened to project meant the box landed on
+    // top of the monument and hid it.
     const mono = monument.userData.label;
     if (mono.visible && mono.element.offsetWidth) {
       monument.getWorldPosition(worldPos);
       worldPos.y += mono.position.y;
       projected.copy(worldPos).project(camera);
+      worldPos.y = 1.7;
+      probe.copy(worldPos).project(camera);
       if (projected.z <= 1) {
-        const hw = mono.element.offsetWidth / 2 + 8;
-        const hh = mono.element.offsetHeight / 2 + 8;
-        // It is the widest box in the scene and it stands over the middle of a
-        // plaza the camera is free to sit off to one side of, so it is the one
-        // most likely to hang off an edge. Slide it back in — it has no stem to
-        // keep honest, so nothing is lost by moving it.
-        let sx = (projected.x * 0.5 + 0.5) * stageW;
-        const want = Math.min(Math.max(sx, hw + 4), stageW - hw - 4);
-        mono.element.style.setProperty('--shift', `${Math.round(want - sx)}px`);
-        sx = want;
-        placed.push({ sx, sy: (-projected.y * 0.5 + 0.5) * stageH, hw, hh });
+        floorCandidates.push({
+          label: mono,
+          el: mono.element,
+          roofY: (-probe.y * 0.5 + 0.5) * stageH,
+          boxH: mono.element.offsetHeight,
+          rank: -1,
+          key: 0,
+          lift: true,
+          sx: (projected.x * 0.5 + 0.5) * stageW,
+          sy: (-projected.y * 0.5 + 0.5) * stageH,
+          hw: mono.element.offsetWidth / 2 + 8,
+          hh: mono.element.offsetHeight / 2 + 9,
+        });
       }
     }
 
@@ -2077,46 +2264,63 @@ export function createStory(root) {
       // the building it names. Start high enough that the box clears the roof
       // entirely, then keep climbing only if a neighbour is in the way.
       const base = c.lift ? c.hh + 12 : 0;
-      // Slide a label that would cross an edge back into frame rather than
-      // dropping it — losing the tallest building's name because it stands at
-      // the side of the shot is the worst possible thing to drop. The stem
-      // moves the other way so it still lands on the roof it names.
-      let shift = 0;
-      if (c.lift) {
-        if (c.sx - c.hw < 4) shift = 4 - (c.sx - c.hw);
-        else if (c.sx + c.hw > stageW - 4) shift = (stageW - 4) - (c.sx + c.hw);
-        if (shift) { c.sx += shift; c.el.style.setProperty('--shift', `${shift}px`); }
-        else c.el.style.setProperty('--shift', '0px');
-      }
       // Never lift a box out of the frame. The tallest building in the city has
       // its roof near the top of the shot by definition, so the lift that clears
       // its roof is exactly the one that pushes its name off the screen.
       const ceiling = Math.max(0, c.sy - c.hh - 6);
-      const ladder = (c.lift ? LIFTS.map((e) => base + e) : [0]).filter((v) => v <= ceiling);
+      const lifts = (c.lift ? LIFTS.map((e) => base + e) : [0]).filter((v) => v <= ceiling);
       // Above the roof is the preference, not the requirement. When the building
       // reaches the top of the shot there is nothing above it but the toolbar,
       // so come back down and sit over its own top floors — a name printed on
       // the building it names beats no name at all.
       if (c.lift) {
-        for (const v of [Math.round(base * 0.55), 0]) if (v <= ceiling) ladder.push(v);
+        for (const v of [Math.round(base * 0.55), 0]) if (v <= ceiling) lifts.push(v);
       }
-      if (!ladder.length) ladder.push(Math.max(0, ceiling));
-      let lift = 0;
-      let clash = true;
-      for (const tryLift of ladder) {
+      if (!lifts.length) lifts.push(Math.max(0, ceiling));
+
+      // Two dimensions, not one. A tower standing shoulder to shoulder with its
+      // neighbour has nowhere to go straight up — the neighbour's own stack is
+      // there — but often plenty of room a step to the side, and the stem stays
+      // honest either way because it is drawn from the box back to the anchor.
+      // The sideways search is solved rather than sampled: a ladder of fixed
+      // offsets kept missing gaps it could have reached, and the name it missed
+      // was usually the tallest building's, standing where the crowd is.
+      const anchorX = c.sx;
+      let best = null;
+      for (const tryLift of lifts) {
         const sy = c.sy - tryLift;
-        if (inChrome(c.sx, sy, c.hw, c.hh)) continue;
-        if (placed.some((p) => Math.abs(p.sx - c.sx) < p.hw + c.hw
-          && Math.abs(p.sy - sy) < p.hh + c.hh)) continue;
-        lift = tryLift;
-        clash = false;
-        break;
+        if (sy - c.hh < 4 || sy + c.hh > stageH - 4) continue;
+        const sx = c.lift ? freeX(sy, c.hw, c.hh, anchorX)
+          : (inChrome(anchorX, sy, c.hw, c.hh) ? null : anchorX);
+        if (sx === null) continue;
+        best = { sx, sy, lift: tryLift };
+        break;   // the first lift that works is the lowest, so the closest
       }
-      if (c.lift) c.el.style.setProperty('--lift', `${lift}px`);
-      c.sy -= lift;
-      c.label.visible = !clash;
-      if (!clash) placed.push(c);
+
+      if (best) {
+        if (c.lift) {
+          c.el.style.setProperty('--lift', `${best.lift}px`);
+          c.el.style.setProperty('--shift', `${Math.round(best.sx - anchorX)}px`);
+          // From the foot of the box down to the roof as it stands this year.
+          if (c.roofY !== undefined) {
+            const stem = Math.max(9, c.roofY - best.sy - c.boxH / 2);
+            c.el.style.setProperty('--stem', `${Math.round(stem)}px`);
+          }
+        }
+        c.sx = best.sx;
+        c.sy = best.sy;
+        placed.push(c);
+      }
+      c.label.visible = !!best && !c.hidden;
+      if (c.tower) (best ? namedNow : unnamedNow).add(c.tower);
     }
+
+    // A lit building with no name over it is exactly what the chapter's own
+    // lighting is supposed to rule out, so when a nameplate genuinely cannot be
+    // placed its building's lights go out too. Lit and named are the same set,
+    // which is the whole promise the city makes to the reader.
+    for (const t of unnamedNow) unplaceable.add(t);
+    for (const t of namedNow) unplaceable.delete(t);
   }
 
   let running = false;
@@ -2137,7 +2341,10 @@ export function createStory(root) {
     }
 
     if (!state.userMoved) {
-      spin += dt * 0.03;
+      // No drift. A slow orbit looks alive standing still, but it moves every
+      // label on the screen every frame, and a label near a neighbour crosses
+      // and re-crosses it — which reads as names flickering on and off rather
+      // than as a camera moving. A still frame is worth more than a live one.
       aimCamera();
       camera.position.lerp(camGoal, 1 - Math.pow(0.002, dt));
       controls.target.lerp(lookGoal, 1 - Math.pow(0.002, dt));
@@ -2201,10 +2408,29 @@ export function createStory(root) {
     onHover(describe(found), e);
   });
   renderer.domElement.addEventListener('pointerleave', () => { state.hovered = null; onHover(null); });
-  renderer.domElement.addEventListener('pointerdown', () => { state.userMoved = true; });
+
+  /*  Taking the camera means dragging it, not touching it. Any pointerdown used
+   *  to count, so on a phone — where a tap is how you interact with anything at
+   *  all — the first touch froze the framing for the rest of the story, and
+   *  every later chapter kept a shot composed for an earlier one while the
+   *  buildings grew off the top of the screen. A drag past a few pixels is the
+   *  gesture that actually means "I want to look somewhere else". */
+  let dragFrom = null;
+  renderer.domElement.addEventListener('pointerdown', (e) => {
+    dragFrom = { x: e.clientX, y: e.clientY };
+  });
+  renderer.domElement.addEventListener('pointermove', (e) => {
+    if (!dragFrom) return;
+    if (Math.abs(e.clientX - dragFrom.x) + Math.abs(e.clientY - dragFrom.y) > 8) {
+      state.userMoved = true;
+      dragFrom = null;
+    }
+  });
+  addEventListener('pointerup', () => { dragFrom = null; });
+  renderer.domElement.addEventListener('wheel', () => { state.userMoved = true; }, { passive: true });
   renderer.domElement.addEventListener('click', (e) => {
     const found = pick(e);
-    if (!found) { state.selected = null; frameChapter(chapters[state.chapter]); onPick(null, e); return; }
+    if (!found) { state.selected = null; frameCity(); onPick(null, e); return; }
     if (found.tower) focusTower(found.tower);
     onPick(describe(found), e);
   });
@@ -2262,7 +2488,7 @@ export function createStory(root) {
     freeNdc.hx = Math.max(0.12, (1 - left) / 2);
     freeNdc.cy = (bottom + top) / 2;
     freeNdc.hy = Math.max(0.12, (top - bottom) / 2);
-    if (refit && !state.userMoved && chapters[state.chapter]) frameChapter(chapters[state.chapter]);
+    if (refit && !state.userMoved && chapters[state.chapter]) frameCity();
   }
 
   function resize() {
@@ -2290,7 +2516,7 @@ export function createStory(root) {
     needMeasure = true;
     // A resize changes the free area, so the shot has to be recomputed — unless
     // the reader has taken the camera somewhere themselves.
-    if (!state.userMoved && chapters[state.chapter]) frameChapter(chapters[state.chapter]);
+    if (!state.userMoved && chapters[state.chapter]) frameCity();
   }
 
   // --------------------------------------------------------------- hooks --
@@ -2320,12 +2546,13 @@ export function createStory(root) {
       const idx = chapters.findIndex((c, i) => year <= c.yearTo || i === chapters.length - 1);
       if (idx >= 0 && idx !== state.chapter) {
         state.chapter = idx;
-        frameChapter(chapters[idx]);
+        state.userMoved = false;
+        frameCity();
         onChapterChange(chapters[idx], idx);
       }
       refresh();
     },
-    resetView() { state.userMoved = false; frameChapter(chapters[state.chapter]); },
+    resetView() { state.userMoved = false; frameCity(); },
     dispose() {
       running = false;
       controls.dispose();

@@ -44,20 +44,36 @@ is — AT&T's $408B tower stands over everything else on the plaza. Press play a
 city builds itself between 1983 and 2026: storeys slide into place as deals close,
 traffic runs the streets, and lamplight pools on the pavement.
 
-Deals that never closed are there too, as ghost storeys — red outlines hanging beside
-the building at the height they would have occupied. WorldCom's $129B bid for Sprint
-is taller than most finished buildings in the city. Announced-but-unclosed deals are
-scaffolding on the roof; a company changing owner lights a marker rather than adding
-a floor. Click any building to walk up to it and read its storeys by name.
+Deals that never closed are there too, as ghost storeys — red outlines rising out
+of the roof at the height they would have occupied, then collapsing back into it
+and leaving a scar on the parapet. WorldCom's $129B bid for Sprint is taller than
+most finished buildings in the city. Announced-but-unclosed deals are scaffolding
+on the roof; a company changing owner lights a marker rather than adding a floor.
+Click any building to walk up to it and read its storeys by name.
+
+The camera is fitted once, to the whole plaza at its final height, and then left
+alone for the entire story. Nothing can grow out of frame, because the frame was
+built for the finished city; every building keeps the same place on the screen
+from 1983 to 2026; and the story is told by which buildings are lit and named,
+not by where the camera is pointing. The city fills a frame that was always
+waiting for it.
 
 Only the companies a chapter is about keep their lights on. Every other building
-— the rest of the data city included — stands dark with the surrounding fabric,
-so the eye goes to the three or four towers the narration is actually talking
-about, and a lit window is a reliable sign that the building under it is named.
-The lights fade rather than switch, so a chapter change reads as the city handing
-the story on. Walk up to a building and it becomes the only lit thing in the
-frame. The prologue has no cast at all, so the plaza stays dark behind the Bell
-System's monument; the last chapter has the whole skyline.
+— the rest of the data city included — goes dark, walls and windows both, so it
+recedes into the surrounding fabric rather than standing in the front row with
+no name on it. The lights fade rather than switch, so a chapter change reads as
+the city handing the story on. Walk up to a building and it becomes the only lit
+thing in the frame. The prologue has no cast at all, so the plaza stays dark
+behind the Bell System's monument; the last chapter has the whole skyline.
+
+Lit and named are the same set, deliberately: a nameplate that cannot be placed
+takes its building's lights with it, so a lit window always has a name over it
+and a name always has a stem down to a lit roof. Each plate hangs at the height
+its company will finally reach, and the stem shortens year by year as the
+building grows up to meet its own name — so the layout is computed against fixed
+points and does not move while the story runs. A deal that was blocked is a line
+inside the plate of the company that tried it, not a second label competing for
+the same roof.
 
 The architecture is borrowed from Chicago — Sears Tower setbacks, a tapered Hancock
 tube, Aon's limestone slab, Board of Trade deco, Tribune Gothic pinnacles, Wrigley
