@@ -597,6 +597,8 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
 .story-body {
   font-size: 1.16rem; line-height: 1.6; color: var(--s-ink-2); margin: 0;
 }
+/* Only a phone gets the collapsed card, so the button only exists there. */
+.sp-more { display: none; }
 .sp-deals { margin-top: 28px; border-top: 1px solid var(--s-line-2); padding-top: 20px; }
 .sp-deals-label {
   display: block; font-family: var(--s-mono); font-size: 0.62rem;
@@ -680,16 +682,35 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
   .story-mark { display: none; }
   .story-btn { padding: 4px 9px; font-size: 0.62rem; letter-spacing: 0.06em; }
 
+  /* A third of what it was. The card is the caption, not the article: chapter,
+     year, title and the opening lines. Anything more covers the city it is
+     describing, which is the thing worth looking at on a small screen. Tap to
+     read the rest. */
   .story-panel {
     left: 10px; right: 10px; width: auto; bottom: calc(var(--s-bar-h, 108px) + 10px);
-    /* The bottom fade needs empty space to land on, or it eats the last line. */
-    padding: 16px 16px 30px; max-height: 44vh;
+    padding: 12px 14px 12px; max-height: none; overflow: visible;
+    -webkit-mask-image: none; mask-image: none;
   }
-  .story-panel h2 { font-size: 1.3rem; margin-bottom: 10px; }
-  .story-body { font-size: 0.86rem; }
+  .sp-head { margin-bottom: 6px; }
+  .sp-chapter { font-size: 0.62rem; letter-spacing: 0.1em; }
+  .sp-clock { font-size: 1.1rem; }
+  .story-panel h2 { font-size: 1.05rem; line-height: 1.15; margin-bottom: 0; }
+  /* Collapsed, the card is a caption: which chapter, which year, its title.
+     The prose is what covers the city, so it waits behind "Read more". */
+  .story-body { display: none; font-size: 0.8rem; line-height: 1.45; }
   .story-hint { display: none; }
-  .sp-deals { margin-top: 14px; padding-top: 12px; }
+  .sp-deals { display: none; }
   .story-feed li { padding: 6px 10px; }
+
+  .sp-more {
+    display: block; margin: 7px 0 0; padding: 3px 0;
+    font: inherit; font-family: var(--s-mono); font-size: 0.62rem;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--s-accent); background: none; border: 0; cursor: pointer;
+  }
+  .story-panel.is-open { max-height: 56vh; overflow-y: auto; padding-bottom: 26px; }
+  .story-panel.is-open .story-body { display: block; margin-top: 8px; }
+  .story-panel.is-open .sp-deals { display: block; margin-top: 14px; padding-top: 12px; }
 
   /* The chapter chips scroll rather than wrapping — three wrapped rows was what
      pushed the transport up over the card. */
@@ -721,8 +742,7 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
 }
 
 @media (max-width: 460px) {
-  .story-panel { max-height: 42vh; }
-  .sp-deals { display: none; }
+  .story-panel.is-open { max-height: 52vh; }
 }
 
 /* A phone on its side: almost no height, plenty of width. The card goes back to

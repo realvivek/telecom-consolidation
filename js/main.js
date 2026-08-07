@@ -375,7 +375,25 @@ function buildJumpList() {
     playBtn.textContent = story && story.state.playing ? 'Pause' : 'Play';
   }
 
+  // The phone card is collapsed to a caption; this opens it out. Reset on every
+  // chapter so a new chapter never arrives already expanded over the city.
+  const panelEl = $('#story-panel');
+  const moreBtn = $('#story-more');
+  moreBtn.addEventListener('click', () => {
+    const open = !panelEl.classList.contains('is-open');
+    panelEl.classList.toggle('is-open', open);
+    moreBtn.setAttribute('aria-expanded', String(open));
+    moreBtn.textContent = open ? 'Show less' : 'Read more';
+  });
+
+  function collapsePanel() {
+    panelEl.classList.remove('is-open');
+    moreBtn.setAttribute('aria-expanded', 'false');
+    moreBtn.textContent = 'Read more';
+  }
+
   function showChapter(ch, i) {
+    collapsePanel();
     $('#story-kicker').textContent = `Chapter ${i + 1} of ${story.chapters.length} · ${ch.kicker}`;
     $('#story-title').textContent = ch.title.replace(/\.$/, '');
     $('#story-body').textContent = ch.body;
@@ -534,10 +552,12 @@ function buildJumpList() {
   });
   addEventListener('resize', () => { if (!root.hidden) story?.resize(); });
 
-  // The city is the front door. Anyone arriving at a section — a shared link to
-  // the ledger, a jump back from "Read the full story" — asked for that section
-  // instead, so a hash in the URL opts out.
-  if (!location.hash) open();
+  // The city is the front door on a desktop. Not on a phone: a WebGL scene is
+  // the most expensive thing here and the smallest screen is where it reads
+  // worst, so a phone lands on the page and opens the city only if asked.
+  // A hash in the URL opts out everywhere — a shared link to the ledger, or the
+  // jump back from "Read the full story", asked for that section instead.
+  if (!location.hash && innerWidth > 860) open();
 })();
 
 // ----------------------------------------------------------------- resize --

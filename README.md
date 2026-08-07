@@ -34,7 +34,9 @@ while the chart is in view. Threads still independent today are drawn in blue an
 run to the right edge; everything absorbed is neutral grey; blocked deals are the
 one reserved red.
 
-**Story mode** is the same data as a city at night, in eight narrated chapters. Every company
+**Story mode** is the same data as a city at night, in eight narrated chapters.
+It opens by default on a desktop; on a phone it waits to be asked, and its card
+collapses to a caption so the city it describes stays visible. Every company
 still standing today gets a building; every acquisition it made is a storey, stacked
 in the order the deals closed, with storey height set by the announced price. A
 building's total height is therefore the money it spent buying its way to where it
