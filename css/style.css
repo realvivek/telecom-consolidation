@@ -839,10 +839,18 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
 /* A blocked deal, named only while it is standing in the sky. */
 .ghost-label {
   position: relative; display: block; white-space: nowrap; text-align: center;
+  /* Raised clear of a neighbour by the same declutter pass as the nameplates,
+     with a stem that grows to keep it attached to the storey it names. */
+  translate: 0 calc(-1 * var(--lift, 0px));
   background: rgba(24, 16, 15, 0.82);
   border: 1px solid rgba(255, 107, 90, 0.5);
   border-radius: 3px; padding: 4px 10px 5px;
   box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+}
+.ghost-label::after {
+  content: ''; position: absolute; left: 50%; top: 100%;
+  width: 1px; height: var(--lift, 0px); margin-left: -0.5px;
+  background: linear-gradient(rgba(255, 107, 90, 0.55), rgba(255, 107, 90, 0));
 }
 .ghost-label b {
   display: block; font-size: 11.5px; font-weight: 600; color: #ffd9d2;

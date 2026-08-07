@@ -1734,10 +1734,9 @@ export function createStory(root) {
   // preference. Nothing below the roof, since the stem would have to run
   // upwards through the building.
   const LIFTS = [0, 30, 60, 90, 120, 150];
-  const candidates = [];
-  const placed = [];
+  // One candidate list and one occupied list for every kind of label.
   const floorCandidates = [];
-  const floorPlaced = [];
+  const placed = [];
 
   /** The narration panel, the deal feed, the deal card and the transport bar own
    *  their corners; a label that would land on one is dropped rather than
@@ -1832,7 +1831,11 @@ export function createStory(root) {
         }
         const size = sizeOf(f, f.label.element, 150, 36);
         floorCandidates.push({
-          f,
+          label: f.label,
+          el: f.label.element,
+          rank: 3,
+          key: -f.h,          // the deals that shaped the company go first
+          lift: false,        // the leader line is horizontal, so it cannot move
           // The box hangs to the right of the anchor — see .floor-label.
           sx: (projected.x * 0.5 + 0.5) * stageW + size.lw / 2 + 4,
           sy: (-projected.y * 0.5 + 0.5) * stageH,
@@ -1840,40 +1843,66 @@ export function createStory(root) {
           hh: size.lh / 2 + 5,
         });
       }
-    }
-    floorCandidates.sort((a, b) => b.f.h - a.f.h);
-    floorPlaced.length = 0;
-    for (const c of floorCandidates) {
-      const clash = inChrome(c.sx, c.sy, c.hw, c.hh)
-        || floorPlaced.some((p) => Math.abs(p.sx - c.sx) < p.hw + c.hw
-          && Math.abs(p.sy - c.sy) < p.hh + c.hh);
-      c.f.label.visible = !clash;
-      if (!clash) floorPlaced.push(c);
-    }
 
-    // A blocked deal only exists for a couple of years, so while it is in the
-    // sky it gets named — that window is the whole point of it being there.
-    for (const t of towers) {
+      // A blocked deal only exists for a couple of years, so while it is in the
+      // sky it gets named — that window is the whole point of it being there.
       for (const p of t.ghostParts) {
-        if (!p.node.visible || !t.group.visible) continue;
+        if (!p.node.visible || !t.group.visible) { p.label.visible = false; continue; }
         worldPos.set(t.x, p.label.position.y, t.z);
         projected.copy(worldPos).project(camera);
-        if (projected.z > 1 || Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1) continue;
+        if (projected.z > 1 || Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1) {
+          p.label.visible = false;
+          continue;
+        }
         const size = sizeOf(p, p.label.element, 150, 34);
-        const sx = (projected.x * 0.5 + 0.5) * stageW;
-        const sy = (-projected.y * 0.5 + 0.5) * stageH;
-        const hw = size.lw / 2 + 6;
-        const hh = size.lh / 2 + 6;
-        if (inChrome(sx, sy, hw, hh)) continue;
-        p.label.visible = true;
-        floorPlaced.push({ sx, sy, hw, hh });
+        floorCandidates.push({
+          label: p.label,
+          el: p.label.element,
+          rank: 1,            // transient and the point of the moment
+          key: 0,
+          lift: true,
+          sx: (projected.x * 0.5 + 0.5) * stageW,
+          sy: (-projected.y * 0.5 + 0.5) * stageH,
+          hw: size.lw / 2 + 6,
+          hh: size.lh / 2 + 6,
+        });
       }
     }
 
-    // The Bell System's caption is wide, multi-line and always on while it
-    // stands, and it never went through this pass — so tower labels printed
-    // straight across it. Reserve its box before anything else is placed.
+    // Tower nameplates.
+    for (const t of towers) {
+      if (!show.has(t) || !t.group.visible) { t.label.visible = false; continue; }
+      t.label.position.set(0, 0.16 + t.heightAt(state.year) + 1.3, 0);
+      t.group.getWorldPosition(worldPos);
+      worldPos.y = t.label.position.y;
+      projected.copy(worldPos).project(camera);
+      if (projected.z > 1 || Math.abs(projected.x) > 1.1 || Math.abs(projected.y) > 1.1) {
+        t.label.visible = false;
+        continue;
+      }
+      const size = sizeOf(t, t.labelEl, 150, 42);
+      const focus = t === state.hovered || t === state.selected;
+      t.labelEl.classList.toggle('is-focus', focus);
+      floorCandidates.push({
+        label: t.label,
+        el: t.labelEl,
+        rank: focus ? 0 : 2,
+        key: camera.position.distanceToSquared(worldPos),
+        lift: true,
+        sx: (projected.x * 0.5 + 0.5) * stageW,
+        sy: (-projected.y * 0.5 + 0.5) * stageH,
+        hw: size.lw / 2 + 7,
+        hh: size.lh / 2 + 9,   // room for the stem under the box
+      });
+    }
+
+    // One pass, one occupied list. Nameplates, storey names and blocked deals
+    // were each decluttered against their own kind, so a blocked deal could
+    // print straight across a nameplate — which is exactly what it did.
     placed.length = 0;
+
+    // The Bell System's caption is wide, multi-line and on screen for the first
+    // two years. It is never placed, so reserve its box before anything else.
     const mono = monument.userData.label;
     if (mono.visible && mono.element.offsetWidth) {
       monument.getWorldPosition(worldPos);
@@ -1889,39 +1918,15 @@ export function createStory(root) {
       }
     }
 
-    candidates.length = 0;
-    for (const t of towers) {
-      if (!show.has(t) || !t.group.visible) { t.label.visible = false; continue; }
-      t.label.position.set(0, 0.16 + t.heightAt(state.year) + 1.3, 0);
-      t.group.getWorldPosition(worldPos);
-      worldPos.y = t.label.position.y;
-      projected.copy(worldPos).project(camera);
-      if (projected.z > 1 || Math.abs(projected.x) > 1.1 || Math.abs(projected.y) > 1.1) {
-        t.label.visible = false;
-        continue;
-      }
-      const size = sizeOf(t, t.labelEl, 150, 42);
-      candidates.push({
-        t,
-        sx: (projected.x * 0.5 + 0.5) * stageW,
-        sy: (-projected.y * 0.5 + 0.5) * stageH,
-        hw: size.lw / 2 + 7,
-        hh: size.lh / 2 + 9,   // room for the stem under the box
-        depth: camera.position.distanceToSquared(worldPos),
-        priority: t === state.hovered || t === state.selected ? -1 : 0,
-      });
-    }
-
-    candidates.sort((a, b) => a.priority - b.priority || a.depth - b.depth);
-    for (const c of candidates) {
-      // Towers stand shoulder to shoulder, so on a narrow screen their labels
-      // want more horizontal room than the city occupies and almost all of them
-      // get dropped. Lifting a label clear of its neighbour and paying out more
-      // stem is what actually fits them: the stem still lands on the roof, so
-      // raising the box costs nothing in clarity.
+    floorCandidates.sort((a, b) => a.rank - b.rank || a.key - b.key);
+    for (const c of floorCandidates) {
+      // Labels stand shoulder to shoulder on a narrow screen, wanting more
+      // horizontal room than the city occupies. Lifting one clear of its
+      // neighbour and paying out more stem is what actually fits them: the stem
+      // still lands on what it names, so raising the box costs no clarity.
       let lift = 0;
       let clash = true;
-      for (const tryLift of LIFTS) {
+      for (const tryLift of (c.lift ? LIFTS : [0])) {
         const sy = c.sy - tryLift;
         if (inChrome(c.sx, sy, c.hw, c.hh)) continue;
         if (placed.some((p) => Math.abs(p.sx - c.sx) < p.hw + c.hw
@@ -1930,10 +1935,9 @@ export function createStory(root) {
         clash = false;
         break;
       }
-      c.t.labelEl.style.setProperty('--lift', `${lift}px`);
+      if (c.lift) c.el.style.setProperty('--lift', `${lift}px`);
       c.sy -= lift;
-      c.t.label.visible = !clash;
-      c.t.labelEl.classList.toggle('is-focus', c.priority < 0);
+      c.label.visible = !clash;
       if (!clash) placed.push(c);
     }
   }
