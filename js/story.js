@@ -823,8 +823,11 @@ export function createStory(root) {
         const x = col * 16;
         if (emissive) {
           const r = noise(bank * 17.3 + col * 5.1);
-          if (r < 0.3) continue;                // dark flat
-          const v = 0.3 + ((r - 0.3) / 0.7) ** 1.6 * 0.7;
+          // Well over half dark, and none of them bright: the surroundings are
+          // there to give the skyline depth, not to compete with the buildings
+          // the story is about.
+          if (r < 0.62) continue;
+          const v = 0.16 + ((r - 0.62) / 0.38) ** 1.7 * 0.3;
           g.fillStyle = `rgb(${Math.round(255 * v)},${Math.round(212 * v)},${Math.round(160 * v)})`;
           g.fillRect(x + 4, 3, 9, 8);
           continue;
@@ -844,7 +847,7 @@ export function createStory(root) {
 
     const mat = track(new THREE.MeshStandardMaterial({
       map: tex, roughness: 0.94,
-      emissive: 0xffffff, emissiveMap: paint(true), emissiveIntensity: 1.35,
+      emissive: 0xffffff, emissiveMap: paint(true), emissiveIntensity: 0.5,
     }));
     mat.onBeforeCompile = (shader) => {
       shader.vertexShader = shader.vertexShader.replace('#include <uv_vertex>', `
@@ -1296,7 +1299,7 @@ export function createStory(root) {
     const geo = round ? cylGeo : (tower.style.plan === 'slab' ? slabGeo : boxGeo);
     const mesh = new THREE.Mesh(geo, track(new THREE.MeshStandardMaterial({
       color: colour, map: tex, roughness: 0.82, metalness: 0.02,
-      emissive: 0xffffff, emissiveMap: lit, emissiveIntensity: 1.5,
+      emissive: 0xffffff, emissiveMap: lit, emissiveIntensity: 1.7,
     })));
     mesh.scale.set(width, height, depth);
     mesh.castShadow = true;
@@ -1867,6 +1870,25 @@ export function createStory(root) {
       }
     }
 
+    // The Bell System's caption is wide, multi-line and always on while it
+    // stands, and it never went through this pass — so tower labels printed
+    // straight across it. Reserve its box before anything else is placed.
+    placed.length = 0;
+    const mono = monument.userData.label;
+    if (mono.visible && mono.element.offsetWidth) {
+      monument.getWorldPosition(worldPos);
+      worldPos.y += mono.position.y;
+      projected.copy(worldPos).project(camera);
+      if (projected.z <= 1) {
+        placed.push({
+          sx: (projected.x * 0.5 + 0.5) * stageW,
+          sy: (-projected.y * 0.5 + 0.5) * stageH,
+          hw: mono.element.offsetWidth / 2 + 8,
+          hh: mono.element.offsetHeight / 2 + 8,
+        });
+      }
+    }
+
     candidates.length = 0;
     for (const t of towers) {
       if (!show.has(t) || !t.group.visible) { t.label.visible = false; continue; }
@@ -1891,7 +1913,6 @@ export function createStory(root) {
     }
 
     candidates.sort((a, b) => a.priority - b.priority || a.depth - b.depth);
-    placed.length = 0;
     for (const c of candidates) {
       // Towers stand shoulder to shoulder, so on a narrow screen their labels
       // want more horizontal room than the city occupies and almost all of them
@@ -2028,12 +2049,15 @@ export function createStory(root) {
     const padX = box && !band ? Math.round(Math.min(w * 0.32, box.width * 0.72 + 26)) : 0;
     const padY = box && band ? Math.round(Math.min(h * 0.26, box.height * 0.7)) : 0;
     if (padX === lastPad.x && padY === lastPad.y && w === lastPad.w && h === lastPad.h) return;
+    const refit = Math.abs(padY - lastPad.y) > 12 || Math.abs(padX - lastPad.x) > 12
+      || w !== lastPad.w || h !== lastPad.h;
     lastPad = { x: padX, y: padY, w, h };
     camera.aspect = (w + padX) / (h + padY);
     if (padX || padY) camera.setViewOffset(w + padX, h + padY, 0, padY, w, h);
     else camera.clearViewOffset();
     camera.updateProjectionMatrix();
     ao.uProjInv.value.copy(camera.projectionMatrixInverse);
+    if (refit && !state.userMoved && chapters[state.chapter]) frameChapter(chapters[state.chapter]);
   }
 
   function resize() {

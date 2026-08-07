@@ -54,8 +54,8 @@ The architecture is borrowed from Chicago — Sears Tower setbacks, a tapered Ha
 tube, Aon's limestone slab, Board of Trade deco, Tribune Gothic pinnacles, Wrigley
 terracotta, Marina City cylinders, Monadnock brick, Mies glass boxes. The city sits on a paved plaza inside a
 wider low-rise city that fades into haze, under a low afternoon sun with four
-ridges of hills behind it. Nothing in the surrounding fabric is labelled, so the
-data buildings stay the heroes while the skyline stops ending in mid-air.
+ridges of hills behind it. Nothing in the surrounding fabric is labelled and its windows are mostly dark,
+so the data buildings stay the heroes while the skyline stops ending in mid-air.
 
 Every volume is glazed. Windows are drawn with a recess, a sill and a lintel, at
 a fixed world size, so a tall storey gets more rows rather than a stretched grid

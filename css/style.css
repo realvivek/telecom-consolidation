@@ -739,6 +739,8 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
      or two survive the declutter no matter how far the camera pulls back.
      Smaller boxes are what actually gets more names on screen. */
   .tower-label { padding: 4px 8px 5px; border-radius: 3px; }
+  .tower-label--monument { max-width: 15rem; }
+  .tower-label--monument i { font-size: 9.5px; line-height: 1.35; }
   .tower-label b { font-size: 11px; }
   .tower-label i { font-size: 9px; margin-top: 1px; }
   .tower-label::after { height: calc(10px + var(--lift, 0px)); }
