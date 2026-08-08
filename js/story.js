@@ -36,15 +36,15 @@ const PLINTH_H = 1.2;
 const TOWER_W = 3.0;
 const ASSET_W = 2.25;        // partial asset buys are set back from the façade
 
-const GRID_COLS = 4;
+const GRID_COLS = 3;
 // Block pitch: building + pavement + street. Generous, because the labels need
 // somewhere to stand as much as the buildings do — shoulder to shoulder, a
 // nameplate could not sit over its own roof without landing on its neighbour's.
-const GRID_STEP = 10.6;
+const GRID_STEP = 12.0;
 const FAB_BLOCKS = 8;        // how far the street grid and its blocks run out
-const BLOCK_W = 7.2;         // pavement slab around each building
+const BLOCK_W = 7.6;         // pavement slab around each building
 const ROAD_W = 2.8;
-const MONUMENT_Z = -27.5;   // behind the plaza, so the empty 1983 city still has a subject
+const MONUMENT_Z = 0;   // the middle block of the plaza — the city grows around it
 
 const RISE_YEARS = 0.55;     // how long a storey takes to slide into place
 
@@ -298,8 +298,15 @@ const chapterSeconds = (ch) => Math.min(16, Math.max(5, 4.5 + (ch.yearTo - ch.ye
 
 // ------------------------------------------------------------------ towers --
 // A building is one surviving company plus everything that ended up inside it.
-// Companies that never bought anyone still get a plot — a low-rise is an honest
-// picture of a company that did not spend its way anywhere.
+//
+// A company that never bid for anything gets no building. It used to get a plot
+// on the grounds that a low-rise is an honest picture of a company that did not
+// spend its way anywhere — but this city is about the deals, and a plot with no
+// storeys and no failed bids is a building the story never has a reason to name.
+// Standing dark in the middle of the plaza, arriving in some year for no stated
+// reason, those read as clutter around the buildings that mean something. They
+// are in the ledger and the bubble map, where a company with no acquisitions is
+// still a company.
 function buildTowers() {
   const groups = [];
   for (const fam of FAMILIES) {
@@ -342,18 +349,29 @@ function buildTowers() {
     };
   });
 
+  // Only the companies that tried something get a building — a closed deal or a
+  // blocked one. A bid that died is a storey the company never got to build, and
+  // it still needs a roof to stand over.
+  const built = towers.filter((t) => t.floors.length || t.ghosts.length);
   // Tallest at the back so nothing important hides behind anything else.
-  towers.sort((a, b) => b.height - a.height);
-  const rows = Math.ceil(towers.length / GRID_COLS);
-  towers.forEach((t, i) => {
+  built.sort((a, b) => b.height - a.height);
+  /*  The Bell System's footprint takes the middle block and the city is laid out
+   *  around it. It used to stand on its own behind the plaza, which read as a
+   *  grey box outside the square — a thing with no relationship to the city in
+   *  front of it. In the middle it is what the caption says it is: the ground
+   *  the rest of this was built on. */
+  const rows = Math.ceil((built.length + 1) / GRID_COLS);
+  const centre = Math.floor(rows / 2) * GRID_COLS + Math.floor(GRID_COLS / 2);
+  built.forEach((t, k) => {
+    const i = k >= centre ? k + 1 : k;
     const row = Math.floor(i / GRID_COLS);
     const col = i % GRID_COLS;
     t.x = (col - (GRID_COLS - 1) / 2) * GRID_STEP;
     t.z = (row - (rows - 1) / 2) * GRID_STEP;
-    t.style = STYLES[i < 8 ? TALL_ORDER[i] : LOW_ORDER[(i - 8) % LOW_ORDER.length]];
+    t.style = STYLES[k < 8 ? TALL_ORDER[k] : LOW_ORDER[(k - 8) % LOW_ORDER.length]];
     t.allDeals = [...t.floors.map((f) => f.deal), ...t.ghosts, ...t.pending, ...t.ownership];
   });
-  return towers;
+  return built;
 }
 
 /** A soft elliptical smudge, used as a contact shadow under each building.
@@ -557,10 +575,16 @@ export function createStory(root) {
   let lastPad = { x: -1, y: -1, w: -1, h: -1 };
   // The part of the frame the narration card leaves for the city, in NDC.
   const freeNdc = { cx: 0, cy: 0, hx: 1, hy: 1 };
-  // Room kept around the city for its nameplates, in pixels: above the skyline
-  // for a plate and its leader, and at each side, because a building standing
-  // at the edge of the frame has nowhere to put its name and loses it.
-  const LABEL_HEADROOM = 60;
+  /*  Room kept around the city for its nameplates, in pixels: above the skyline
+   *  for a plate and its leader, and at each side, because a building standing
+   *  at the edge of the frame has nowhere to put its name and loses it.
+   *
+   *  The headroom has to clear the toolbar as well as the plate. Sixty pixels of
+   *  sky above the tallest roof sounds generous until you notice the toolbar is
+   *  fifty-six pixels of it, which leaves four — so AT&T, whose roof is at the
+   *  top of the shot by definition, had nowhere to put its name in any chapter
+   *  where its plate carried a second line. */
+  const LABEL_HEADROOM = () => (stageW < 760 ? 124 : 104);
   const LABEL_MARGIN = 52;
   const disposables = [];
   const track = (x) => { disposables.push(x); return x; };
@@ -1602,11 +1626,13 @@ export function createStory(root) {
       color: COLOR.stone, roughness: 0.9,
       emissive: 0xbcd0ea, emissiveIntensity: 0.22,
     })));
-    slab.scale.set(13, 1.6, 6.5);
+    slab.scale.set(BLOCK_W * 0.82, 1.6, BLOCK_W * 0.5);
     slab.position.y = 0.8;
     slab.castShadow = true;
     slab.receiveShadow = true;
     slab.userData.company = 'bellsystem';
+    monument.userData.stone = new THREE.Color(COLOR.stone);
+    monument.userData.paving = new THREE.Color(COLOR.plaza).multiplyScalar(0.9);
     monument.add(slab);
     picks.push(slab);
     monument.userData.slab = slab;
@@ -1665,10 +1691,8 @@ export function createStory(root) {
       minZ = Math.min(minZ, t.z - BLOCK_W / 2); maxZ = Math.max(maxZ, t.z + BLOCK_W / 2);
       maxH = Math.max(maxH, t.heightAt(year));
     }
-    // The monument is in every frame of the story's first two years, so it is
-    // part of what the one fixed shot has to hold.
-    minZ = Math.min(minZ, MONUMENT_Z - 4);
-    maxZ = Math.max(maxZ, MONUMENT_Z + 4);
+    // The monument stands on the middle block, so the plaza's own bounds already
+    // contain it.
     shot.centre.set((minX + maxX) / 2, maxH * 0.46, (minZ + maxZ) / 2);
 
     // Fit against the area actually left over for the city, not the whole
@@ -1922,7 +1946,10 @@ export function createStory(root) {
         const dy = state.year - p.deal.year;
         const rise = clamp01((dy + GHOST_BEFORE) / GHOST_BEFORE);
         const fall = clamp01(dy / GHOST_AFTER);
-        const live = rise > 0 && fall < 1;
+        // Only a building the chapter has named puts a bid in the sky. An
+        // unnamed tower flying a red outline is the exact thing the lighting
+        // rule exists to prevent: something happening, with nothing to say who.
+        const live = rise > 0 && fall < 1 && lit.has(t);
         if (live) t.liveGhost = p;
         p.node.visible = live;
         p.hit.visible = live;
@@ -1936,17 +1963,27 @@ export function createStory(root) {
           p.hit.scale.y = p.h * k;
           p.hit.position.copy(p.node.position);
         }
-        p.scar.visible = dy >= 0.85;
+        p.scar.visible = dy >= 0.85 && lit.has(t);
         if (p.scar.visible) p.scar.position.y = 0.16 + top + 0.035;
       }
       for (const p of t.pendingParts) p.node.visible = state.year >= p.deal.year - 0.6;
-      for (const b of t.beaconParts) b.mesh.visible = state.year >= b.deal.year;
+      for (const b of t.beaconParts) b.mesh.visible = state.year >= b.deal.year && lit.has(t);
     }
 
     // The monument stands until the breakup, then leaves its footprint behind.
+    // Its light goes out with it: lit while it is the subject of the story, and
+    // paving afterwards. Left glowing it was a pale slab sitting in the middle
+    // of the plaza for forty years with no name on it and no reason to be there
+    // — a grey box, which is exactly what it looked like.
     const gone = Math.min(1, Math.max(0, (state.year - 1984) / 0.8));
-    monument.userData.slab.scale.y = 1.6 * (1 - gone * 0.88);
-    monument.userData.slab.position.y = (1.6 * (1 - gone * 0.88)) / 2;
+    const slab = monument.userData.slab;
+    slab.scale.y = 1.6 * (1 - gone * 0.88);
+    slab.position.y = (1.6 * (1 - gone * 0.88)) / 2;
+    if (Math.abs(gone - (monument.userData.gone ?? -1)) > 0.004) {
+      monument.userData.gone = gone;
+      slab.material.emissiveIntensity = 0.22 * (1 - gone);
+      slab.material.color.copy(monument.userData.stone).lerp(monument.userData.paving, gone);
+    }
     // Once the city has grown past it the plaque is just something in the way.
     monument.userData.label.visible = state.year < 1986;
   }
@@ -2536,7 +2573,7 @@ export function createStory(root) {
     const left = (padX ? (2 * padX) / w - 1 : -1) + m;
     const right = 1 - m;
     const bottom = padY ? 1 - (2 * (h - padY)) / h : -1;
-    const top = 1 - (2 * LABEL_HEADROOM) / h;
+    const top = 1 - (2 * LABEL_HEADROOM()) / h;
     freeNdc.cx = (left + right) / 2;
     freeNdc.hx = Math.max(0.12, (right - left) / 2);
     freeNdc.cy = (bottom + top) / 2;

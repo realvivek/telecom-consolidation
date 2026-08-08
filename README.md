@@ -36,8 +36,10 @@ one reserved red.
 
 **Story mode** is the same data as a city at night, in eight narrated chapters.
 It opens by default on a desktop; on a phone it waits to be asked, and its card
-collapses to a caption so the city it describes stays visible. Every company
-still standing today gets a building; every acquisition it made is a storey, stacked
+collapses to a caption so the city it describes stays visible. Every company that
+bought something, or tried to, gets a building — a company that never bid for
+anything is in the ledger and the bubble map but not on the plaza, because a plot
+with no storeys and no failed bids is a building the story has no reason to name; every acquisition it made is a storey, stacked
 in the order the deals closed, with storey height set by the announced price. A
 building's total height is therefore the money it spent buying its way to where it
 is — AT&T's $408B tower stands over everything else on the plaza. Press play and the
@@ -64,7 +66,8 @@ recedes into the surrounding fabric rather than standing in the front row with
 no name on it. The lights fade rather than switch, so a chapter change reads as
 the city handing the story on. Walk up to a building and it becomes the only lit
 thing in the frame. The prologue has no cast at all, so the plaza stays dark
-behind the Bell System's monument; the last chapter has the whole skyline.
+behind the Bell System's monument, which stands on the middle block with the city
+laid out around it; the last chapter has the whole skyline.
 
 Lit and named are the same set, deliberately: a nameplate that cannot be placed
 takes its building's lights with it, so a lit window always has a name over it
