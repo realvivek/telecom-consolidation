@@ -69,16 +69,28 @@ thing in the frame. The prologue has no cast at all, so the plaza stays dark
 behind the Bell System's monument, which stands on the middle block with the city
 laid out around it; the last chapter has the whole skyline.
 
+Nothing in the layout moves while a chapter plays. Every input to it is drawn
+from the chapter rather than from the year — the cast, the plate sizes, the
+blocked bid a plate names, the heights the buildings will have reached by the
+end of it — so the solve is the same arithmetic in every frame and cannot come
+out differently. The camera takes its one shot outright rather than gliding into
+it, the card is a fixed height so the region the fit aims at never changes, and
+the anchors are rounded to four pixels so a converging projection cannot flip a
+placement. The leader carries the change instead: it starts as long as the
+building has left to grow and shortens to nothing as the storeys arrive.
+
 Lit and named are the same set, deliberately: a nameplate that cannot be placed
 takes its building's lights with it, so a lit window always has a name over it
 and a name always has a leader down to a lit roof. The leader runs from the foot
 of the box to the roof at whatever angle joins the two, ends in a dot on the roof
 itself, and is never longer than a bounded distance — past that the label is not
 drawn at all, because a line that crosses the picture has stopped joining two
-things. Placement searches a short list of positions around the anchor, nearest
-first: above the roof, stacked a box higher, half a box to either side, nothing
-further. It keeps clear of the lit buildings when it can and of the other labels
-always. On a phone the plate carries the company name alone — the money is in the
+things. Placement searches a ring of eight directions at four distances,
+nearest first — above the roof for preference, then beside it, then below, and
+nothing further out. It keeps clear of the lit buildings when it can, of the
+other labels always, and of every other leader: a line crossing another line, or
+running in one side of a box and out the other, makes the reader guess which
+name belongs to which roof, which is the one thing a leader exists to prevent. On a phone the plate carries the company name alone — the money is in the
 card and the ledger, where it can be read rather than glanced at, and a name-only
 chip is a third of the width, which is the difference between four names fitting
 and one of them travelling half a frame to find room. A deal that was blocked is

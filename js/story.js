@@ -40,7 +40,7 @@ const GRID_COLS = 3;
 // Block pitch: building + pavement + street. Generous, because the labels need
 // somewhere to stand as much as the buildings do — shoulder to shoulder, a
 // nameplate could not sit over its own roof without landing on its neighbour's.
-const GRID_STEP = 12.0;
+const GRID_STEP = 13.6;
 const FAB_BLOCKS = 8;        // how far the street grid and its blocks run out
 const BLOCK_W = 7.6;         // pavement slab around each building
 const ROAD_W = 2.8;
@@ -584,7 +584,7 @@ export function createStory(root) {
    *  fifty-six pixels of it, which leaves four — so AT&T, whose roof is at the
    *  top of the shot by definition, had nowhere to put its name in any chapter
    *  where its plate carried a second line. */
-  const LABEL_HEADROOM = () => (stageW < 760 ? 124 : 104);
+  const LABEL_HEADROOM = () => (stageW < 760 ? 92 : 88);
   const LABEL_MARGIN = 52;
   const disposables = [];
   const track = (x) => { disposables.push(x); return x; };
@@ -1572,6 +1572,10 @@ export function createStory(root) {
     t.label.visible = false;
     group.add(t.label);
 
+    // The bid that needs the most room, since the box is sized for the chapter
+    // rather than for the moment.
+    t.ghostCaption = t.ghostParts.map((g) => g.caption).sort((a, b) => b.length - a.length)[0] || '';
+
     // Everything the chapter can put out, gathered once the group is complete
     // so no crown or string course is missed. Each keeps its own colour, so
     // the dimming is a fade between two known states rather than a repaint.
@@ -1658,6 +1662,18 @@ export function createStory(root) {
     const ghostOwners = new Set(towers.filter((t) =>
       t.ghosts.some((d) => d.year - GHOST_BEFORE <= ch.yearTo
         && d.year + GHOST_AFTER >= ch.yearFrom)));
+    // Which bid, so the plate can name it for the whole chapter rather than for
+    // the two years the outline is in the sky. Showing it only in that window
+    // meant the box changed height halfway through a chapter — and a plate that
+    // changes height is a plate that moves. The chapter is about the bid; the
+    // plate can say so throughout it, and the outline still rises and collapses
+    // in the year it actually happened.
+    const ghostCaption = new Map();
+    for (const t of ghostOwners) {
+      const p = t.ghostParts.find((g) => g.deal.year - GHOST_BEFORE <= ch.yearTo
+        && g.deal.year + GHOST_AFTER >= ch.yearFrom);
+      if (p) ghostCaption.set(t, p.caption);
+    }
     const framed = [...new Set([...active, ...ghostOwners])];
     // A chapter with no deals of its own is either the prologue or the finale,
     // and the city itself says which: whatever is standing when it ends. In
@@ -1666,7 +1682,7 @@ export function createStory(root) {
     if (!framed.length) {
       framed.push(...towers.filter((t) => t.floors.some((f) => f.deal.year <= ch.yearTo)));
     }
-    return { ...ch, active, framed, ghostOwners };
+    return { ...ch, active, framed, ghostOwners, ghostCaption };
   });
 
   const state = {
@@ -1740,7 +1756,7 @@ export function createStory(root) {
     // puts the city in the middle of it. Fitted at the city's final height, so
     // the frame is built for the skyline that will be there in 2026 and nothing
     // ever grows out of it.
-    const TARGET = stageW < 760 ? 0.94 : 0.92;
+    const TARGET = stageW < 760 ? 0.95 : 0.93;
     const e = BLOCK_W / 2;
     const vTan = Math.tan((camera.fov * Math.PI) / 360);
     for (let pass = 0; pass < 14; pass++) {
@@ -1795,7 +1811,7 @@ export function createStory(root) {
    *  and named, not by where the camera is pointing. The city fills a frame that
    *  was always waiting for it. */
   function frameCity() {
-    fitTo(towers, END_YEAR, 1.06);
+    fitTo(towers, END_YEAR, 1.04);
     shot.azimuth = 0;
     // Higher than a street-level shot. The one fixed frame has to hold both the
     // empty plaza of 1983 and AT&T's finished tower, and at a shallow angle the
@@ -1807,6 +1823,16 @@ export function createStory(root) {
     spin = 0;
     state.selected = null;
     aimCamera();
+    // Take the shot, do not glide into it. There is one shot for the whole
+    // story, so the only glide there could be is the one at the start — and
+    // for as long as it lasts every label on the screen is a pixel or two out
+    // from where it will finally sit.
+    if (!state.userMoved) {
+      camera.position.copy(camGoal);
+      controls.target.copy(lookGoal);
+      camera.lookAt(lookGoal);
+      camera.updateMatrixWorld(true);
+    }
   }
 
   function focusTower(t) {
@@ -1946,13 +1972,17 @@ export function createStory(root) {
         const dy = state.year - p.deal.year;
         const rise = clamp01((dy + GHOST_BEFORE) / GHOST_BEFORE);
         const fall = clamp01(dy / GHOST_AFTER);
-        // Only a building the chapter has named puts a bid in the sky. An
-        // unnamed tower flying a red outline is the exact thing the lighting
-        // rule exists to prevent: something happening, with nothing to say who.
-        const live = rise > 0 && fall < 1 && lit.has(t);
+        /*  Whether the bid is in play is a fact about the year, not about
+         *  whether the label fitted. Tying it to the lighting made a loop: a
+         *  plate that failed to place turned its building off, which cleared its
+         *  bid line, which made the plate smaller, which let it place, which
+         *  turned the building on — and round again, reshuffling the chapter
+         *  every few frames. The sky is still gated on being named, below; only
+         *  the caption is not. */
+        const live = rise > 0 && fall < 1;
         if (live) t.liveGhost = p;
-        p.node.visible = live;
-        p.hit.visible = live;
+        p.node.visible = live && lit.has(t);
+        p.hit.visible = p.node.visible;
         if (live) {
           const k = Math.max(0.001, rise * (1 - fall));
           p.shell.scale.y = p.h * k;
@@ -2019,17 +2049,38 @@ export function createStory(root) {
   const worldPos = new THREE.Vector3();
   const probe = new THREE.Vector3();
   // How far a tower label may be raised to clear a neighbour, in order of
-  // preference. Nothing below the roof, since the stem would have to run
-  // upwards through the building.
-  /*  Where a label is allowed to stand, relative to the roof it names: straight
-   *  above it, then stacked a box higher, then half a box to either side.
-   *  Nearest first, and nothing further out — a leader that crosses the frame is
-   *  not a leader. `up` counts boxes above the roof, `side` counts half-boxes
-   *  across. Twelve places in all; if none of them is free, the label is not
-   *  drawn and the building goes dark with it. */
+  /*  Where a label is allowed to stand, relative to the roof it names: a ring of
+   *  eight directions at four distances, nearest first. Above is still the
+   *  preference — that leader is shortest and reads most naturally — then
+   *  beside, then below. Searching only upwards ignored three quarters of the
+   *  frame and dropped names for want of room that was there the whole time. */
   const SLOTS = [];
-  for (let up = 0; up < 5; up++) for (const side of [0, -1, 1, -2, 2]) SLOTS.push({ up, side });
-  SLOTS.sort((a, b) => (a.up * 1.0 + Math.abs(a.side) * 1.3) - (b.up * 1.0 + Math.abs(b.side) * 1.3));
+  for (let r = 1; r <= 4; r++) {
+    for (const [ux, uy] of [[0, -1], [-1, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1], [0, 1]]) {
+      SLOTS.push({ ux, uy, r, cost: r + (uy > 0 ? 0.7 : uy === 0 ? 0.35 : 0) + Math.abs(ux) * 0.12 });
+    }
+  }
+  SLOTS.sort((a, b) => a.cost - b.cost);
+
+  /** Do two segments cross? A leader running through another leader — or through
+   *  another label's box — makes the reader guess which name belongs to which
+   *  roof, which is the one thing a leader exists to prevent. */
+  function crosses(a, b) {
+    const side = (px, py, qx, qy, rx, ry) => Math.sign((qx - px) * (ry - py) - (qy - py) * (rx - px));
+    return side(a.x1, a.y1, a.x2, a.y2, b.x1, b.y1) !== side(a.x1, a.y1, a.x2, a.y2, b.x2, b.y2)
+      && side(b.x1, b.y1, b.x2, b.y2, a.x1, a.y1) !== side(b.x1, b.y1, b.x2, b.y2, a.x2, a.y2);
+  }
+
+  /** Does a leader pass through a box? Its four edges, tested as segments. */
+  function throughBox(line, b) {
+    const x0 = b.sx - b.hw; const x1 = b.sx + b.hw;
+    const y0 = b.sy - b.hh; const y1 = b.sy + b.hh;
+    return crosses(line, { x1: x0, y1: y0, x2: x1, y2: y0 })
+      || crosses(line, { x1: x1, y1: y0, x2: x1, y2: y1 })
+      || crosses(line, { x1: x1, y1: y1, x2: x0, y2: y1 })
+      || crosses(line, { x1: x0, y1: y1, x2: x0, y2: y0 });
+  }
+  const leaders = [];
 
   // One candidate list and one occupied list for every kind of label.
   const floorCandidates = [];
@@ -2199,15 +2250,21 @@ export function createStory(root) {
 
     }
 
-    /*  Tower nameplates: just above the roof the building has today.
+    /*  Tower nameplates, pinned to where the roof will be at the end of this
+     *  chapter.
      *
-     *  Hanging them at the height the company would finally reach made the
-     *  layout beautifully stable and completely unreadable — in 1993 a plate
-     *  floated two hundred pixels above a two-storey building, joined to it by
-     *  a line long enough that the eye lost which one it meant. A label has to
-     *  sit on the thing it names. Stability is bought elsewhere: the camera no
-     *  longer moves, so the only thing that shifts a plate is its own building
-     *  growing, and it grows slowly and in one direction. */
+     *  Anchoring to the roof the building has *today* meant every plate crept up
+     *  the screen for as long as the story ran, and a plate creeping past its
+     *  neighbour gets bumped sideways and comes back. Anchoring to the roof it
+     *  will have in 2026 was the other extreme: perfectly still, and in 1993 a
+     *  plate floating two hundred pixels above a two-storey building.
+     *
+     *  The chapter is the right unit. Every input to the layout is drawn from
+     *  the chapter — the cast, the plate sizes, and now the heights — so within
+     *  a chapter the layout is not merely stable, it is the same arithmetic
+     *  every frame and cannot move. The leader carries the change instead: it
+     *  starts as long as the building has left to grow and shortens to nothing
+     *  as the storeys arrive. */
     for (const t of towers) {
       if (!show.has(t)) { t.label.visible = false; continue; }
       // A company founded halfway through a chapter used to arrive as an extra
@@ -2215,15 +2272,20 @@ export function createStory(root) {
       // off the screen. Its slot is reserved from the start of the chapter and
       // simply stands empty until the company exists.
       const unborn = !t.group.visible;
-      // A failed bid is a line inside the plate, not a plate of its own.
-      const caption = t.liveGhost ? t.liveGhost.caption : '';
+      /*  A failed bid is a line inside the plate, not a plate of its own. In a
+       *  chapter where this company has one, the line is in the box for the
+       *  whole chapter and merely invisible until the bid goes up — otherwise
+       *  the box changes height halfway through and the plate, which is centred
+       *  on its anchor, moves. The layout has to be the same in every frame of a
+       *  chapter, and that includes the size of what it is laying out. */
+      const caption = ch.ghostCaption.get(t) || '';
       if (caption !== t.captionNow) {
         t.captionNow = caption;
         t.labelEl.innerHTML = t.plate + (caption ? `<s>${caption}</s>` : '');
         t.labelEl.classList.toggle('has-ghost', !!caption);
         needMeasure = true;   // the box just changed size
       }
-      t.label.position.set(0, 0.16 + t.heightAt(state.year) + 1.4, 0);
+      t.label.position.set(0, 0.16 + t.heightAt(ch.yearTo) + 1.4, 0);
       t.group.getWorldPosition(worldPos);
       worldPos.y = t.label.position.y;
       projected.copy(worldPos).project(camera);
@@ -2232,9 +2294,15 @@ export function createStory(root) {
         unnamedNow.add(t);
         continue;
       }
-      // Where the building has actually reached, so the stem can run down to it.
+      /*  Where the building has actually reached, so the leader can run down to
+       *  it — both coordinates, not just the height. The dot used to take its x
+       *  from the anchor and its y from the roof, and a point directly above a
+       *  tower does not project to the same x as the tower's roof unless the
+       *  camera happens to be aligned with it. So the leader landed beside the
+       *  building rather than on it, by more the shorter the building was. */
       worldPos.y = 0.16 + t.heightAt(state.year) + 0.25;
       probe.copy(worldPos).project(camera);
+      const roofX = (probe.x * 0.5 + 0.5) * stageW;
       const roofY = (-probe.y * 0.5 + 0.5) * stageH;
       // The size this chapter reserves: with room for a blocked-bid line only
       // in the chapters where this company has one.
@@ -2248,6 +2316,7 @@ export function createStory(root) {
         label: t.label,
         el: t.labelEl,
         tower: t,
+        roofX,
         roofY,
         boxH: size.lh,
         hidden: unborn,
@@ -2272,6 +2341,7 @@ export function createStory(root) {
     // were each decluttered against their own kind, so a blocked deal could
     // print straight across a nameplate — which is exactly what it did.
     placed.length = 0;
+    leaders.length = 0;
 
     // The Bell System's caption is the widest box in the scene and it is the
     // only thing the first two years have to look at, so it is placed first —
@@ -2311,8 +2381,11 @@ export function createStory(root) {
      *  backdrop and a label may cross it freely, but nothing the chapter is
      *  about should have a box printed over it. */
     for (const t of show) {
-      if (!t.group.visible) continue;
-      const top = 0.16 + t.heightAt(state.year);
+      // Every cast building, whether or not it has been founded yet, at the
+      // height it will have when the chapter ends. A company arriving mid-
+      // chapter used to add an obstacle nobody had planned around, and the
+      // packing came out different from that frame on.
+      const top = 0.16 + t.heightAt(ch.yearTo);
       const e = TOWER_W * 0.62;
       let x0 = Infinity; let x1 = -Infinity; let y0 = Infinity; let y1 = -Infinity;
       for (const dx of [-e, e]) {
@@ -2336,6 +2409,18 @@ export function createStory(root) {
       }
     }
 
+    /*  Solve on a coarse grid. Every input to the layout is now chapter-constant
+     *  in principle, but the camera converges on its goal asymptotically and the
+     *  projected anchors wander a pixel or two while it does — and a pixel is
+     *  enough to flip a slot that only just fitted, which cascades into a
+     *  different answer for the whole chapter. Rounding the anchors to four
+     *  pixels makes the solve deaf to that. The leader is still drawn from the
+     *  exact roof, so nothing is lost but the jitter. */
+    for (const c of floorCandidates) {
+      c.ax = c.sx; c.ay = c.sy;                 // exact, for the leader
+      c.sx = Math.round(c.sx / 4) * 4;
+      c.sy = Math.round(c.sy / 4) * 4;
+    }
     floorCandidates.sort((a, b) => a.rank - b.rank || a.key - b.key);
     for (const c of floorCandidates) {
       /*  A label goes next to the thing it names, or it does not go at all.
@@ -2361,24 +2446,41 @@ export function createStory(root) {
        *  Overlapping the side of a tower is a blemish. Having no name is a
        *  missing fact. */
       let best = null;
-      // However crowded it gets, a leader has a length past which it stops
-      // joining two things and starts crossing a picture. Beyond it the label
-      // is not drawn at all and its building goes dark — which at least says
-      // something true, where a line trailing off across the city does not.
+      // However crowded it gets, a box has a distance from its own anchor past
+      // which the leader stops joining two things and starts crossing a picture.
+      // Beyond it the label is not drawn at all and its building goes dark —
+      // which at least says something true, where a line trailing off across
+      // the city does not. Measured anchor to box, not box to roof: the gap a
+      // building has left to grow is honest length, not stray length.
       const leaderMax = 120 + stageW * 0.14;
-      for (const strict of [true, false]) {
-        for (const slot of (c.lift ? SLOTS : [{ up: 0, side: 0 }])) {
-          const sy = c.sy - (c.lift ? c.hh + 13 + slot.up * (c.hh * 2 + 7) : 0);
-          const sx = c.sx + slot.side * (c.hw + 10);
-          if (c.lift && c.roofY !== undefined
-            && Math.hypot(c.sx - sx, c.roofY - sy - c.boxH / 2) > leaderMax) continue;
+      // Three passes, each giving up one thing: first clear of the buildings, the
+      // other labels and every other leader; then allowing a building to be
+      // crossed; then allowing a leader to be crossed. A blemish beats a missing
+      // name and a crossing beats a missing name, but neither is free.
+      for (const relax of [0, 1, 2]) {
+        for (const slot of (c.lift ? SLOTS : [{ ux: 0, uy: 0, r: 0 }])) {
+          const sx = c.sx + slot.ux * (c.hw + 12) * slot.r;
+          const sy = c.sy + slot.uy * (c.hh + 12) * slot.r;
+          if (c.lift && Math.hypot(c.sx - sx, c.sy - sy) > leaderMax) continue;
           if (sx - c.hw < 4 || sx + c.hw > stageW - 4) continue;
           if (sy - c.hh < 4 || sy + c.hh > stageH - 4) continue;
           if (inChrome(sx, sy, c.hw, c.hh)) continue;
-          if (placed.some((p) => p.tower !== c.tower && (strict || !p.soft)
+          if (placed.some((p) => p.tower !== c.tower && (relax < 1 || !p.soft)
             && Math.abs(p.sx - sx) < p.hw + c.hw
             && Math.abs(p.sy - sy) < p.hh + c.hh)) continue;
-          best = { sx, sy };
+          // The anchor, not the roof as it stands this year. The drawn leader
+          // still runs to the roof, but if the layout is solved against a point
+          // that moves, the layout moves — which is how a whole chapter's
+          // labels reshuffled the moment one building finished growing.
+          const line = { x1: sx, y1: sy, x2: c.sx, y2: c.sy };
+          if (c.lift && relax < 2) {
+            // Not through another leader, and not through another label either
+            // — a line entering a box and coming out the far side is the same
+            // ambiguity drawn a different way.
+            if (leaders.some((l) => crosses(l, line))) continue;
+            if (placed.some((p) => !p.soft && throughBox(line, p))) continue;
+          }
+          best = { sx, sy, line };
           break;
         }
         if (best) break;
@@ -2386,12 +2488,14 @@ export function createStory(root) {
 
       if (best) {
         if (c.lift) {
-          c.el.style.setProperty('--lift', `${Math.round(c.sy - best.sy)}px`);
-          c.el.style.setProperty('--shift', `${Math.round(best.sx - c.sx)}px`);
+          // Offsets from the exact anchor, so the box lands on the grid the
+          // layout was solved on and stays there.
+          c.el.style.setProperty('--lift', `${Math.round(c.ay - best.sy)}px`);
+          c.el.style.setProperty('--shift', `${Math.round(best.sx - c.ax)}px`);
           // The leader, from the foot of the box to the roof as it stands this
           // year, at whatever angle joins the two.
           if (c.roofY !== undefined) {
-            const dx = c.sx - best.sx;
+            const dx = (c.roofX ?? c.sx) - best.sx;
             const dy = Math.max(8, c.roofY - best.sy - c.boxH / 2);
             c.el.style.setProperty('--stem-dx', `${Math.round(dx)}px`);
             c.el.style.setProperty('--stem-dy', `${Math.round(dy)}px`);
@@ -2399,6 +2503,7 @@ export function createStory(root) {
             c.el.style.setProperty('--stem-ang', `${(Math.atan2(dy, dx) * 180 / Math.PI).toFixed(1)}deg`);
           }
         }
+        if (c.lift) leaders.push(best.line);
         c.sx = best.sx;
         c.sy = best.sy;
         placed.push(c);
@@ -2434,8 +2539,15 @@ export function createStory(root) {
       // and re-crosses it — which reads as names flickering on and off rather
       // than as a camera moving. A still frame is worth more than a live one.
       aimCamera();
-      camera.position.lerp(camGoal, 1 - Math.pow(0.002, dt));
-      controls.target.lerp(lookGoal, 1 - Math.pow(0.002, dt));
+      // Snap the last fraction. An asymptote never arrives, and while it is
+      // arriving every label on the screen is a pixel out from where it was.
+      if (camera.position.distanceToSquared(camGoal) < 0.06) {
+        camera.position.copy(camGoal);
+        controls.target.copy(lookGoal);
+      } else {
+        camera.position.lerp(camGoal, 1 - Math.pow(0.002, dt));
+        controls.target.lerp(lookGoal, 1 - Math.pow(0.002, dt));
+      }
     }
     controls.update();
     build(dt);

@@ -580,7 +580,7 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
    closing right now, all in the same place and all changing together. */
 .story-panel {
   position: absolute; left: clamp(14px, 3vw, 30px); bottom: 96px; z-index: 3;
-  width: clamp(430px, 40vw, 680px); max-height: calc(100vh - 190px);
+  width: clamp(430px, 40vw, 680px); height: min(72vh, 640px);
   overflow-y: auto; overscroll-behavior: contain;
   scrollbar-width: thin;
   /* Fade the cut rather than slicing an entry in half when the feed is long. */
@@ -713,9 +713,14 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
   /* The card carries the whole chapter on a phone too. It is short enough to
      fit because the type is smaller, and the camera lifts the city clear of
      whatever height it ends up — see applyViewOffset. */
+  /* A fixed height, not a maximum. The camera is fitted to the part of the
+     frame this card leaves free, so a card that changes height between chapters
+     changes the fit with it — which is the zoom moving as the story runs. Eight
+     chapters of different-length prose, eight different framings. It is the
+     same height in all of them now, and the fit is the same arithmetic. */
   .story-panel {
     left: 10px; right: 10px; width: auto; bottom: calc(var(--s-bar-h, 108px) + 10px);
-    padding: 14px 15px 16px; max-height: 40vh; overflow-y: auto;
+    padding: 14px 15px 16px; height: 33vh; overflow-y: auto;
     -webkit-mask-image: none; mask-image: none;
   }
   .sp-head { margin-bottom: 6px; }
@@ -772,7 +777,7 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
 }
 
 @media (max-width: 460px) {
-  .story-panel { max-height: 38vh; }
+  .story-panel { height: 33vh; }
 }
 
 /* A phone on its side: almost no height, plenty of width. The card goes back to
