@@ -557,8 +557,11 @@ export function createStory(root) {
   let lastPad = { x: -1, y: -1, w: -1, h: -1 };
   // The part of the frame the narration card leaves for the city, in NDC.
   const freeNdc = { cx: 0, cy: 0, hx: 1, hy: 1 };
-  // Room kept above the skyline for a nameplate and its stem, in pixels.
-  const LABEL_HEADROOM = 78;
+  // Room kept around the city for its nameplates, in pixels: above the skyline
+  // for a plate and its leader, and at each side, because a building standing
+  // at the edge of the frame has nowhere to put its name and loses it.
+  const LABEL_HEADROOM = 60;
+  const LABEL_MARGIN = 52;
   const disposables = [];
   const track = (x) => { disposables.push(x); return x; };
 
@@ -1044,7 +1047,7 @@ export function createStory(root) {
         // Dimmer than they were: the lamp pools were the brightest thing on
         // screen, which is a poor place for the eye to go when the subject of
         // the frame is whichever three buildings have their lights on.
-        map: pool, color: 0xffc987, transparent: true, opacity: 0.42,
+        map: pool, color: 0xffc987, transparent: true, opacity: 0.3,
         blending: THREE.AdditiveBlending, depthWrite: false, fog: true,
       }));
       const pools = new THREE.InstancedMesh(geo, mat, spots.length);
@@ -1314,8 +1317,8 @@ export function createStory(root) {
    *  with the windows, toward the same cool tone the surrounding fabric is
    *  painted in, so an unlit building recedes into the fabric instead of
    *  competing with the story from the front row. */
-  const LIT_ON = 1.7;
-  const LIT_OFF = 0.05;
+  const LIT_ON = 2.4;
+  const LIT_OFF = 0.04;
   const NIGHT_TONE = new THREE.Color(0x2b3441);
 
   function collectMaterials(group) {
@@ -1981,7 +1984,16 @@ export function createStory(root) {
   // How far a tower label may be raised to clear a neighbour, in order of
   // preference. Nothing below the roof, since the stem would have to run
   // upwards through the building.
-  const LIFTS = [0, 30, 60, 90, 120, 150];
+  /*  Where a label is allowed to stand, relative to the roof it names: straight
+   *  above it, then stacked a box higher, then half a box to either side.
+   *  Nearest first, and nothing further out — a leader that crosses the frame is
+   *  not a leader. `up` counts boxes above the roof, `side` counts half-boxes
+   *  across. Twelve places in all; if none of them is free, the label is not
+   *  drawn and the building goes dark with it. */
+  const SLOTS = [];
+  for (let up = 0; up < 5; up++) for (const side of [0, -1, 1, -2, 2]) SLOTS.push({ up, side });
+  SLOTS.sort((a, b) => (a.up * 1.0 + Math.abs(a.side) * 1.3) - (b.up * 1.0 + Math.abs(b.side) * 1.3));
+
   // One candidate list and one occupied list for every kind of label.
   const floorCandidates = [];
   const placed = [];
@@ -1990,34 +2002,6 @@ export function createStory(root) {
   const unplaceable = new Set();
   const namedNow = new Set();
   const unnamedNow = new Set();
-
-  /** The x nearest `want` at which a box of this size sits clear of everything
-   *  already placed and of the interface, or null if the row is full. Exact
-   *  rather than sampled: collect the intervals this row is blocked in, then
-   *  take the closest point outside all of them. */
-  function freeX(sy, hw, hh, want) {
-    const lo = hw + 4;
-    const hi = stageW - hw - 4;
-    if (hi < lo) return null;
-    const blocked = [];
-    for (const p of placed) {
-      if (Math.abs(p.sy - sy) < p.hh + hh) blocked.push([p.sx - p.hw - hw, p.sx + p.hw + hw]);
-    }
-    for (const r of chromeRects) {
-      if (sy + hh > r.y0 && sy - hh < r.y1) blocked.push([r.x0 - hw, r.x1 + hw]);
-    }
-    const ok = (x) => x >= lo - 0.01 && x <= hi + 0.01
-      && !blocked.some(([a, b]) => x > a + 0.01 && x < b - 0.01);
-    if (ok(want)) return want;
-    let best = null;
-    const offer = (x) => {
-      if (ok(x) && (best === null || Math.abs(x - want) < Math.abs(best - want))) best = x;
-    };
-    for (const [a, b] of blocked) { offer(a - 0.5); offer(b + 0.5); }
-    offer(lo);
-    offer(hi);
-    return best;
-  }
 
   /** The narration panel, the deal feed, the deal card and the transport bar own
    *  their corners; a label that would land on one is dropped rather than
@@ -2075,11 +2059,30 @@ export function createStory(root) {
       if (t.labelEl) pairs.push([t, t.labelEl]);
       for (const f of t.floors) if (f.label) pairs.push([f, f.label.element]);
     }
-    if (!pairs.length || !pairs[0][1].isConnected) return false;
-    const was = pairs.map(([, el]) => el.style.display);
-    for (const [, el] of pairs) el.style.display = '';
+    if (!pairs.length) return false;
+    /*  A label that is not on screen is not in the document either — the CSS2D
+     *  renderer only attaches an element while its object is visible. So the
+     *  labels that most needed measuring, the ones the declutter pass had not
+     *  found room for, were the ones it could never measure, and every one of
+     *  them was laid out against a 150x42 guess instead of its real box. That
+     *  guess is nearly twice the width of a real nameplate, which is why plates
+     *  collided with neighbours they did not touch, wandered half a frame to
+     *  find room that was already there, and vanished for want of space they did
+     *  not need. Attach whatever is missing, measure, put it back. */
+    const layer = labelRenderer.domElement;
+    const added = [];
+    const was = pairs.map(([, el]) => [el.style.display, el.style.position]);
+    for (const [, el] of pairs) {
+      el.style.display = '';
+      el.style.position = 'absolute';
+      if (!el.isConnected) { layer.appendChild(el); added.push(el); }
+    }
     for (const [store, el] of pairs) {
       if (el.offsetWidth) { store.lw = el.offsetWidth; store.lh = el.offsetHeight; }
+    }
+    if (!pairs.some(([store]) => store.lw)) {
+      for (const el of added) el.remove();
+      return false;
     }
     /*  A company with a failed bid grows a line in its plate for the two years
      *  the bid is in the sky. Both sizes are measured, because the layout has to
@@ -2106,7 +2109,8 @@ export function createStory(root) {
       t.lhPlain = t.labelEl.offsetHeight || t.lhPlain;
       t.labelEl.innerHTML = now;
     }
-    pairs.forEach(([, el], i) => { el.style.display = was[i]; });
+    for (const el of added) el.remove();
+    pairs.forEach(([, el], i) => { el.style.display = was[i][0]; el.style.position = was[i][1]; });
     return true;
   }
 
@@ -2286,60 +2290,71 @@ export function createStory(root) {
           }
         }
       }
-      if (Number.isFinite(x0)) placed.push({ sx: (x0 + x1) / 2, sy: (y0 + y1) / 2, hw: (x1 - x0) / 2, hh: (y1 - y0) / 2 });
+      // Tagged with its tower, because a building must not block its own name —
+      // a tall tower's box reaches from the pavement to the roof, and the one
+      // place its label belongs is directly above that. AT&T, the tallest
+      // building in the city, was censoring itself out of three chapters.
+      if (Number.isFinite(x0)) {
+        placed.push({ tower: t, soft: true, sx: (x0 + x1) / 2, sy: (y0 + y1) / 2, hw: (x1 - x0) / 2, hh: (y1 - y0) / 2 });
+      }
     }
 
     floorCandidates.sort((a, b) => a.rank - b.rank || a.key - b.key);
     for (const c of floorCandidates) {
-      // Labels stand shoulder to shoulder on a narrow screen, wanting more
-      // horizontal room than the city occupies. Lifting one clear of its
-      // neighbour and paying out more stem is what actually fits them: the stem
-      // still lands on what it names, so raising the box costs no clarity.
-      // A label centred on its anchor straddles the roof and covers the top of
-      // the building it names. Start high enough that the box clears the roof
-      // entirely, then keep climbing only if a neighbour is in the way.
-      const base = c.lift ? c.hh + 12 : 0;
-      // Never lift a box out of the frame. The tallest building in the city has
-      // its roof near the top of the shot by definition, so the lift that clears
-      // its roof is exactly the one that pushes its name off the screen.
-      const ceiling = Math.max(0, c.sy - c.hh - 6);
-      const lifts = (c.lift ? LIFTS.map((e) => base + e) : [0]).filter((v) => v <= ceiling);
-      // Above the roof is the preference, not the requirement. When the building
-      // reaches the top of the shot there is nothing above it but the toolbar,
-      // so come back down and sit over its own top floors — a name printed on
-      // the building it names beats no name at all.
-      if (c.lift) {
-        for (const v of [Math.round(base * 0.55), 0]) if (v <= ceiling) lifts.push(v);
-      }
-      if (!lifts.length) lifts.push(Math.max(0, ceiling));
-
-      // Two dimensions, not one. A tower standing shoulder to shoulder with its
-      // neighbour has nowhere to go straight up — the neighbour's own stack is
-      // there — but often plenty of room a step to the side, and the stem stays
-      // honest either way because it is drawn from the box back to the anchor.
-      // The sideways search is solved rather than sampled: a ladder of fixed
-      // offsets kept missing gaps it could have reached, and the name it missed
-      // was usually the tallest building's, standing where the crowd is.
-      const anchorX = c.sx;
+      /*  A label goes next to the thing it names, or it does not go at all.
+       *
+       *  The old search asked for the nearest free point on a row and took it,
+       *  however far away that turned out to be. On a narrow screen the nearest
+       *  free point is routinely most of a frame away, so AT&T's name ended up
+       *  on the right of the shot joined by a long diagonal to a building on the
+       *  left, crossing two other leaders on the way. Every one of those layouts
+       *  passed a no-overlap test. None of them was readable.
+       *
+       *  So the search is over a short list of places a label is allowed to be:
+       *  directly above its roof, then stacked a box higher, then half a box to
+       *  either side — nearest first, and nothing beyond. If none of them is
+       *  free the label is not placed, and its building's lights go out with it.
+       *  Four clear names beat six that have to be puzzled out. */
+      /*  Two passes. The first keeps the box off the lit buildings as well as off
+       *  the other labels; the second drops that and asks only that no two
+       *  labels overlap. Standing clear of the buildings is worth a lot, but it
+       *  is not worth what a hard rule was costing: on a narrow screen the
+       *  tallest building in the city is also the one with the most obstacles
+       *  around it, so AT&T kept losing its name to a rule meant to protect it.
+       *  Overlapping the side of a tower is a blemish. Having no name is a
+       *  missing fact. */
       let best = null;
-      for (const tryLift of lifts) {
-        const sy = c.sy - tryLift;
-        if (sy - c.hh < 4 || sy + c.hh > stageH - 4) continue;
-        const sx = c.lift ? freeX(sy, c.hw, c.hh, anchorX)
-          : (inChrome(anchorX, sy, c.hw, c.hh) ? null : anchorX);
-        if (sx === null) continue;
-        best = { sx, sy, lift: tryLift };
-        break;   // the first lift that works is the lowest, so the closest
+      // However crowded it gets, a leader has a length past which it stops
+      // joining two things and starts crossing a picture. Beyond it the label
+      // is not drawn at all and its building goes dark — which at least says
+      // something true, where a line trailing off across the city does not.
+      const leaderMax = 120 + stageW * 0.14;
+      for (const strict of [true, false]) {
+        for (const slot of (c.lift ? SLOTS : [{ up: 0, side: 0 }])) {
+          const sy = c.sy - (c.lift ? c.hh + 13 + slot.up * (c.hh * 2 + 7) : 0);
+          const sx = c.sx + slot.side * (c.hw + 10);
+          if (c.lift && c.roofY !== undefined
+            && Math.hypot(c.sx - sx, c.roofY - sy - c.boxH / 2) > leaderMax) continue;
+          if (sx - c.hw < 4 || sx + c.hw > stageW - 4) continue;
+          if (sy - c.hh < 4 || sy + c.hh > stageH - 4) continue;
+          if (inChrome(sx, sy, c.hw, c.hh)) continue;
+          if (placed.some((p) => p.tower !== c.tower && (strict || !p.soft)
+            && Math.abs(p.sx - sx) < p.hw + c.hw
+            && Math.abs(p.sy - sy) < p.hh + c.hh)) continue;
+          best = { sx, sy };
+          break;
+        }
+        if (best) break;
       }
 
       if (best) {
         if (c.lift) {
-          c.el.style.setProperty('--lift', `${best.lift}px`);
-          c.el.style.setProperty('--shift', `${Math.round(best.sx - anchorX)}px`);
+          c.el.style.setProperty('--lift', `${Math.round(c.sy - best.sy)}px`);
+          c.el.style.setProperty('--shift', `${Math.round(best.sx - c.sx)}px`);
           // The leader, from the foot of the box to the roof as it stands this
           // year, at whatever angle joins the two.
           if (c.roofY !== undefined) {
-            const dx = anchorX - best.sx;
+            const dx = c.sx - best.sx;
             const dy = Math.max(8, c.roofY - best.sy - c.boxH / 2);
             c.el.style.setProperty('--stem-dx', `${Math.round(dx)}px`);
             c.el.style.setProperty('--stem-dy', `${Math.round(dy)}px`);
@@ -2355,10 +2370,6 @@ export function createStory(root) {
       if (c.tower) (best ? namedNow : unnamedNow).add(c.tower);
     }
 
-    // A lit building with no name over it is exactly what the chapter's own
-    // lighting is supposed to rule out, so when a nameplate genuinely cannot be
-    // placed its building's lights go out too. Lit and named are the same set,
-    // which is the whole promise the city makes to the reader.
     for (const t of unnamedNow) unplaceable.add(t);
     for (const t of namedNow) unplaceable.delete(t);
   }
@@ -2521,11 +2532,13 @@ export function createStory(root) {
     // the roof at the top of the frame has, by construction, put the name off
     // the screen — which is how the tallest building in the city, the one the
     // whole chart is about, was the one that lost its label on a phone.
-    const left = padX ? (2 * padX) / w - 1 : -1;
+    const m = (2 * LABEL_MARGIN) / w;
+    const left = (padX ? (2 * padX) / w - 1 : -1) + m;
+    const right = 1 - m;
     const bottom = padY ? 1 - (2 * (h - padY)) / h : -1;
     const top = 1 - (2 * LABEL_HEADROOM) / h;
-    freeNdc.cx = (left + 1) / 2;
-    freeNdc.hx = Math.max(0.12, (1 - left) / 2);
+    freeNdc.cx = (left + right) / 2;
+    freeNdc.hx = Math.max(0.12, (right - left) / 2);
     freeNdc.cy = (bottom + top) / 2;
     freeNdc.hy = Math.max(0.12, (top - bottom) / 2);
     if (refit && !state.userMoved && chapters[state.chapter]) frameCity();

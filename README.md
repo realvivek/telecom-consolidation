@@ -68,13 +68,19 @@ behind the Bell System's monument; the last chapter has the whole skyline.
 
 Lit and named are the same set, deliberately: a nameplate that cannot be placed
 takes its building's lights with it, so a lit window always has a name over it
-and a name always has a leader down to a lit roof. The leader is drawn from the
-foot of the box to the roof at whatever angle joins the two, and ends in a dot on
-the roof itself, so which building a label belongs to is never a guess. Labels
-avoid the lit buildings as well as each other — the declutter pass used to know
-only about other labels, which is how a chapter about six companies ended up with
-three of them behind captions. A deal that was blocked is a line inside the plate
-of the company that tried it, not a second label competing for the same roof.
+and a name always has a leader down to a lit roof. The leader runs from the foot
+of the box to the roof at whatever angle joins the two, ends in a dot on the roof
+itself, and is never longer than a bounded distance — past that the label is not
+drawn at all, because a line that crosses the picture has stopped joining two
+things. Placement searches a short list of positions around the anchor, nearest
+first: above the roof, stacked a box higher, half a box to either side, nothing
+further. It keeps clear of the lit buildings when it can and of the other labels
+always. On a phone the plate carries the company name alone — the money is in the
+card and the ledger, where it can be read rather than glanced at, and a name-only
+chip is a third of the width, which is the difference between four names fitting
+and one of them travelling half a frame to find room. A deal that was blocked is
+a line inside the plate of the company that tried it, not a second label
+competing for the same roof.
 
 The architecture is borrowed from Chicago — Sears Tower setbacks, a tapered Hancock
 tube, Aon's limestone slab, Board of Trade deco, Tribune Gothic pinnacles, Wrigley

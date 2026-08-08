@@ -731,7 +731,21 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
      the same pixel size while the frame is a quarter of the width, so only one
      or two survive the declutter no matter how far the camera pulls back.
      Smaller boxes are what actually gets more names on screen. */
-  .tower-label { padding: 4px 8px 5px; border-radius: 3px; }
+  /*  On a phone the plate carries the name and nothing else.
+   *
+   *  "$408B · 14 deals" is twice the width of "AT&T Inc.", and that width was
+   *  the whole problem: a 210px box on a 430px screen cannot stand beside
+   *  another one, so labels had to travel half a frame to find room and arrived
+   *  joined to their building by a diagonal across the city. A name-only chip is
+   *  a third of the width, four of them fit around the cluster with short
+   *  leaders, and the money is in the card and the ledger anyway — where it can
+   *  be read rather than glanced at. */
+  .tower-label { padding: 4px 9px 5px; border-radius: 3px; }
+  .tower-label b { font-size: 11.5px; }
+  .tower-label i { display: none; }
+  .tower-label s {
+    font-size: 9px; max-width: 20ch; margin-top: 4px; padding-top: 4px;
+  }
   /* The Bell System's caption is two lines of prose, and on a phone those two
      lines are half the width of the frame for the first three years — which is
      three years of some other company having nowhere to put its name. The card
