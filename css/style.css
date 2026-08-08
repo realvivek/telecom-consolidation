@@ -479,14 +479,19 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
 /* The stem: box down to roof, always drawn, always reaching the whole way. Its
    foot carries a dot, because a line that fades out over a city of other roofs
    leaves you guessing which one it meant. */
+/* The leader runs from the foot of the box to the roof it names, at whatever
+   angle that takes — a plumb line only connects when the label happens to sit
+   directly over its building, and a label pushed sideways by a neighbour was
+   left trailing a vertical line into empty sky a long way from its box. */
 .tower-label::after {
-  content: ''; position: absolute; left: calc(50% - var(--shift, 0px)); top: 100%;
-  width: 1px; height: var(--stem, 15px); margin-left: -0.5px;
-  background: linear-gradient(rgba(180, 200, 224, 0.75), rgba(180, 200, 224, 0.5));
+  content: ''; position: absolute; left: 50%; top: 100%;
+  width: var(--stem-len, 15px); height: 1px;
+  transform-origin: 0 50%; transform: rotate(var(--stem-ang, 90deg));
+  background: linear-gradient(90deg, rgba(180, 200, 224, 0.85), rgba(180, 200, 224, 0.55));
 }
 .tower-label::before {
-  content: ''; position: absolute; left: calc(50% - var(--shift, 0px));
-  top: calc(100% + var(--stem, 15px));
+  content: ''; position: absolute;
+  left: calc(50% + var(--stem-dx, 0px)); top: calc(100% + var(--stem-dy, 15px));
   width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px;
   border-radius: 50%; background: rgba(198, 216, 236, 0.95);
   box-shadow: 0 0 0 2px rgba(10, 14, 20, 0.6);
@@ -735,7 +740,6 @@ main { padding: 0 clamp(16px, 4vw, 40px) 80px; }
   .tower-label--monument i { display: none; }
   .tower-label b { font-size: 11px; }
   .tower-label i { font-size: 9px; margin-top: 1px; }
-  .tower-label::after { height: calc(10px + var(--lift, 0px)); }
   .floor-label { padding: 3px 8px 4px; }
   .floor-label b { font-size: 10.5px; }
   .floor-label i { font-size: 9px; }

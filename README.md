@@ -68,12 +68,13 @@ behind the Bell System's monument; the last chapter has the whole skyline.
 
 Lit and named are the same set, deliberately: a nameplate that cannot be placed
 takes its building's lights with it, so a lit window always has a name over it
-and a name always has a stem down to a lit roof. Each plate hangs at the height
-its company will finally reach, and the stem shortens year by year as the
-building grows up to meet its own name — so the layout is computed against fixed
-points and does not move while the story runs. A deal that was blocked is a line
-inside the plate of the company that tried it, not a second label competing for
-the same roof.
+and a name always has a leader down to a lit roof. The leader is drawn from the
+foot of the box to the roof at whatever angle joins the two, and ends in a dot on
+the roof itself, so which building a label belongs to is never a guess. Labels
+avoid the lit buildings as well as each other — the declutter pass used to know
+only about other labels, which is how a chapter about six companies ended up with
+three of them behind captions. A deal that was blocked is a line inside the plate
+of the company that tried it, not a second label competing for the same roof.
 
 The architecture is borrowed from Chicago — Sears Tower setbacks, a tapered Hancock
 tube, Aon's limestone slab, Board of Trade deco, Tribune Gothic pinnacles, Wrigley

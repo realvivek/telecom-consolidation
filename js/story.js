@@ -1041,7 +1041,10 @@ export function createStory(root) {
       const geo = track(new THREE.PlaneGeometry(1, 1));
       geo.rotateX(-Math.PI / 2);
       const mat = track(new THREE.MeshBasicMaterial({
-        map: pool, color: 0xffc987, transparent: true, opacity: 0.75,
+        // Dimmer than they were: the lamp pools were the brightest thing on
+        // screen, which is a poor place for the eye to go when the subject of
+        // the frame is whichever three buildings have their lights on.
+        map: pool, color: 0xffc987, transparent: true, opacity: 0.42,
         blending: THREE.AdditiveBlending, depthWrite: false, fog: true,
       }));
       const pools = new THREE.InstancedMesh(geo, mat, spots.length);
@@ -1767,7 +1770,13 @@ export function createStory(root) {
   function frameCity() {
     fitTo(towers, END_YEAR, 1.06);
     shot.azimuth = 0;
-    shot.pitch = 0.21;
+    // Higher than a street-level shot. The one fixed frame has to hold both the
+    // empty plaza of 1983 and AT&T's finished tower, and at a shallow angle the
+    // plaza collapses to a thin band with two-thirds of the screen reserved as
+    // sky for a skyline that will not arrive for thirty years. Looking further
+    // down spreads the plaza across the frame and foreshortens the towers, so
+    // both ends of the story get a composition.
+    shot.pitch = 0.4;
     spin = 0;
     state.selected = null;
     aimCamera();
@@ -2149,17 +2158,15 @@ export function createStory(root) {
 
     }
 
-    /*  Tower nameplates.
+    /*  Tower nameplates: just above the roof the building has today.
      *
-     *  The box hangs at the height the company will finally reach, not at the
-     *  height it has today. Tracking the roof meant every nameplate crept up
-     *  the screen for forty years, and a label creeping past its neighbour
-     *  crosses it, gets bumped, and comes back — which is what "labels come and
-     *  go" was. Pinned to the final roofline the whole layout is computed
-     *  against fixed points and simply does not move. The stem carries the
-     *  honesty instead: it runs from the box down to wherever the building has
-     *  actually got to, and shortens year by year as the building grows up to
-     *  meet its own name. */
+     *  Hanging them at the height the company would finally reach made the
+     *  layout beautifully stable and completely unreadable — in 1993 a plate
+     *  floated two hundred pixels above a two-storey building, joined to it by
+     *  a line long enough that the eye lost which one it meant. A label has to
+     *  sit on the thing it names. Stability is bought elsewhere: the camera no
+     *  longer moves, so the only thing that shifts a plate is its own building
+     *  growing, and it grows slowly and in one direction. */
     for (const t of towers) {
       if (!show.has(t)) { t.label.visible = false; continue; }
       // A company founded halfway through a chapter used to arrive as an extra
@@ -2175,7 +2182,7 @@ export function createStory(root) {
         t.labelEl.classList.toggle('has-ghost', !!caption);
         needMeasure = true;   // the box just changed size
       }
-      t.label.position.set(0, 0.16 + t.height + 1.3, 0);
+      t.label.position.set(0, 0.16 + t.heightAt(state.year) + 1.4, 0);
       t.group.getWorldPosition(worldPos);
       worldPos.y = t.label.position.y;
       projected.copy(worldPos).project(camera);
@@ -2254,6 +2261,34 @@ export function createStory(root) {
       }
     }
 
+    /*  The buildings themselves are obstacles.
+     *
+     *  The declutter pass had only ever known about other labels and about the
+     *  interface, so a nameplate was free to sit squarely across the tower next
+     *  to it — which is how a chapter about six companies ended up with three of
+     *  them behind captions. Only the lit ones count: the dark fabric is a
+     *  backdrop and a label may cross it freely, but nothing the chapter is
+     *  about should have a box printed over it. */
+    for (const t of show) {
+      if (!t.group.visible) continue;
+      const top = 0.16 + t.heightAt(state.year);
+      const e = TOWER_W * 0.62;
+      let x0 = Infinity; let x1 = -Infinity; let y0 = Infinity; let y1 = -Infinity;
+      for (const dx of [-e, e]) {
+        for (const dz of [-e, e]) {
+          for (const y of [0.1, top]) {
+            probe.set(t.x + dx, y, t.z + dz).project(camera);
+            if (probe.z > 1) { x0 = Infinity; break; }
+            const sx = (probe.x * 0.5 + 0.5) * stageW;
+            const sy = (-probe.y * 0.5 + 0.5) * stageH;
+            x0 = Math.min(x0, sx); x1 = Math.max(x1, sx);
+            y0 = Math.min(y0, sy); y1 = Math.max(y1, sy);
+          }
+        }
+      }
+      if (Number.isFinite(x0)) placed.push({ sx: (x0 + x1) / 2, sy: (y0 + y1) / 2, hw: (x1 - x0) / 2, hh: (y1 - y0) / 2 });
+    }
+
     floorCandidates.sort((a, b) => a.rank - b.rank || a.key - b.key);
     for (const c of floorCandidates) {
       // Labels stand shoulder to shoulder on a narrow screen, wanting more
@@ -2301,10 +2336,15 @@ export function createStory(root) {
         if (c.lift) {
           c.el.style.setProperty('--lift', `${best.lift}px`);
           c.el.style.setProperty('--shift', `${Math.round(best.sx - anchorX)}px`);
-          // From the foot of the box down to the roof as it stands this year.
+          // The leader, from the foot of the box to the roof as it stands this
+          // year, at whatever angle joins the two.
           if (c.roofY !== undefined) {
-            const stem = Math.max(9, c.roofY - best.sy - c.boxH / 2);
-            c.el.style.setProperty('--stem', `${Math.round(stem)}px`);
+            const dx = anchorX - best.sx;
+            const dy = Math.max(8, c.roofY - best.sy - c.boxH / 2);
+            c.el.style.setProperty('--stem-dx', `${Math.round(dx)}px`);
+            c.el.style.setProperty('--stem-dy', `${Math.round(dy)}px`);
+            c.el.style.setProperty('--stem-len', `${Math.round(Math.hypot(dx, dy))}px`);
+            c.el.style.setProperty('--stem-ang', `${(Math.atan2(dy, dx) * 180 / Math.PI).toFixed(1)}deg`);
           }
         }
         c.sx = best.sx;
